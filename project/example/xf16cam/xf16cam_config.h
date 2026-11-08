@@ -5,6 +5,7 @@
 
 #define XF16CAM_SSID_MAX_LEN  (32)
 #define XF16CAM_PSK_MAX_LEN   (63)
+#define XF16CAM_CONFIG_LED_ENABLED (1U << 0)
 
 typedef enum {
 	XF16CAM_WIFI_AP = 1,
@@ -40,6 +41,7 @@ int xf16cam_config_save_sta(const char *ssid, const char *psk);
 int xf16cam_config_save_ap(void);
 int xf16cam_config_save_media(XF16CamMediaMode mode);
 int xf16cam_config_save_resolution(XF16CamResolution resolution);
+int xf16cam_config_save_led(int enabled);
 int xf16cam_update_begin(void);
 void xf16cam_update_end(void);
 int xf16cam_update_active(void);
