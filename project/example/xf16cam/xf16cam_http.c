@@ -112,7 +112,7 @@ static void xf16cam_http_gpio_panel(int fd)
 {
 	int port;
 	int pin;
-	char item[256];
+	char item[384];
 
 	xf16cam_http_send_text(fd,
 		"<section class='card wide'><h2>GPIO diagnostics</h2>"
@@ -120,6 +120,10 @@ static void xf16cam_http_gpio_panel(int fd)
 		"Changing a pin temporarily switches it to GPIO output and can stop the camera or crash the board. "
 		"Flash and camera pins are especially risky. Use Restore when the device remains responsive.</p>");
 	for (port = GPIO_PORT_A; port < GPIO_PORT_NUM; ++port) {
+		snprintf(item, sizeof(item),
+			"<details class='gpio-port'%s><summary>Port %c <small>%d pins</small></summary><div class='gpio-list'>",
+			port == GPIO_PORT_A ? " open" : "", 'A' + port, xf16cam_gpio_pin_count(port));
+		xf16cam_http_send_text(fd, item);
 		for (pin = 0; pin < xf16cam_gpio_pin_count(port); ++pin) {
 			GPIO_InitParam config;
 			GPIO_PinState state = HAL_GPIO_ReadPin((GPIO_Port)port, (GPIO_Pin)pin);
@@ -137,8 +141,9 @@ static void xf16cam_http_gpio_panel(int fd)
 			default: mode_name = "peripheral"; break;
 			}
 			length = snprintf(item, sizeof(item),
-				"<div style='display:grid;grid-template-columns:60px 1fr 1.3fr auto;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #dbe2e8'>"
-				"<b>%s</b><span>%s · %s</span><small>%s</small><span>",
+				"<div class='gpio-row'><div class='gpio-info'>"
+				"<b>%s</b><span class='gpio-state'>%s · %s</span>"
+				"<small>%s</small></div><div class='gpio-actions'>",
 				label, mode_name, state == GPIO_PIN_HIGH ? "HIGH" : "LOW",
 				xf16cam_gpio_reason(port, pin));
 			xf16cam_http_send_all(fd, item, length);
@@ -164,8 +169,9 @@ static void xf16cam_http_gpio_panel(int fd)
 					"<button name=action value=restore>Restore</button></form>", port, pin);
 				xf16cam_http_send_all(fd, item, length);
 			}
-			xf16cam_http_send_text(fd, "</span></div>");
+			xf16cam_http_send_text(fd, "</div></div>");
 		}
+		xf16cam_http_send_text(fd, "</div></details>");
 	}
 	xf16cam_http_send_text(fd, "</section>");
 }
@@ -380,10 +386,23 @@ __xip_rodata static const char g_page_head[] =
 	"grid-template-columns:max-content 1fr;gap:7px 14px}.grid b{color:#43515e}form{margin:8px 0}label{display:block;margin:8px 0}"
 	"input,button{font:inherit;min-height:44px;padding:9px 11px;margin:4px 0;border:1px solid #b9c5cd;border-radius:7px}input{width:100%;background:#fff;font-size:16px}"
 	"button{background:#f7f9fa}button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
-	"small{color:var(--muted)}a{color:#096b99}.rtsp{overflow-wrap:anywhere}.nets{display:grid;gap:7px;margin:10px 0}.net{width:100%;display:flex;gap:10px;"
+	"small{color:var(--muted)}a{color:#096b99}.rtsp{overflow-wrap:anywhere}"
+	".gpio-port{border:1px solid var(--line);border-radius:9px;margin:10px 0;overflow:hidden}"
+	".gpio-port summary{display:flex;align-items:center;gap:10px;padding:12px;background:#f6f8f9;cursor:pointer;font-weight:650}"
+	".gpio-port summary small{font-weight:400}.gpio-list{padding:0 12px}"
+	".gpio-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}"
+	".gpio-row:last-child{border-bottom:0}.gpio-info{display:grid;grid-template-columns:52px auto;gap:2px 8px;align-items:center;min-width:0}"
+	".gpio-info b{grid-row:span 2}.gpio-state{font-size:.88rem;color:var(--muted)}.gpio-info small{grid-column:2;overflow-wrap:anywhere}"
+	".gpio-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px}"
+	".gpio-actions form{display:inline-flex;align-items:center;gap:4px;margin:0}"
+	".gpio-actions button{min-height:34px;padding:6px 9px;margin:0;font-size:.85rem}"
+	".gpio-actions input[type=range]{width:110px;min-height:24px;padding:0;margin:0}"
+	".nets{display:grid;gap:7px;margin:10px 0}.net{width:100%;display:flex;gap:10px;"
 	"align-items:center;justify-content:space-between;text-align:left;margin:0;background:#fff}.net span:first-child{min-width:0;overflow-wrap:anywhere}.net span:last-child{flex:none;white-space:nowrap}.net.sel{border-color:var(--brand);"
 	"box-shadow:0 0 0 2px #176b5b33;background:#f3faf8}.net.empty{justify-content:center;color:var(--muted)}@media(max-width:680px){header{align-items:flex-start}.panel.on{grid-template-columns:1fr}"
-	".wide{grid-column:auto}.screen{min-height:180px}.grid{grid-template-columns:1fr}.grid b{margin-top:5px}}</style></head><body>";
+	".wide{grid-column:auto}.screen{min-height:180px}.grid{grid-template-columns:1fr}.grid b{margin-top:5px}"
+	".gpio-row{grid-template-columns:1fr;gap:7px}.gpio-actions{justify-content:flex-start}.gpio-info{grid-template-columns:48px minmax(0,1fr)}"
+	".gpio-actions input[type=range]{width:100px}}</style></head><body>";
 
 __xip_text
 static int xf16cam_http_send_all(int fd, const void *data, size_t length)
