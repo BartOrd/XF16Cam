@@ -419,8 +419,19 @@ static void xf16cam_http_page(int fd)
 	                  "<form method=post action=/api/sd/refresh><button type=submit>Check card</button></form>"
 	                  "<form method=post action=/api/sd/format onsubmit=\"return confirm('Erase and format the SD card?')\">"
 	                  "<button type=submit>Format FAT32</button></form>"
-	                  "<small>Formatting permanently erases the card. Ejecting lets the shared PA23 camera/SD rail power down while idle.</small></section></div>"
-	                  "<div id=system class=panel><section class=card><h2>Device</h2><div class=grid>");
+	                  "<small>Formatting permanently erases the card. Ejecting lets the shared PA23 camera/SD rail power down while idle.</small></section></div>");
+	XF16CAM_HTTP_SEND_LITERAL(fd, "<div id=system class=panel>");
+	if (config->reserved & XF16CAM_CONFIG_LED_ENABLED) {
+		XF16CAM_HTTP_SEND_LITERAL(fd,
+		                  "<section class=card><h2>Status light</h2><p>Currently: <b>ON</b></p>"
+		                  "<form method=post action=/api/led><button type=submit name=state value=off>Turn off</button></form></section>");
+	} else {
+		XF16CAM_HTTP_SEND_LITERAL(fd,
+		                  "<section class=card><h2>Status light</h2><p>Currently: <b>OFF</b></p>"
+		                  "<form method=post action=/api/led><button class=primary type=submit name=state value=on>Turn on</button></form></section>");
+	}
+	XF16CAM_HTTP_SEND_LITERAL(fd,
+	                  "<section class=card><h2>Device</h2><div class=grid>");
 	length = snprintf(dynamic, sizeof(dynamic),
 	                  "<b>Network mode</b><span>%s</span><b>IP address</b><span>%s</span>"
 	                  "<b>Wi-Fi MAC</b><span>%02X:%02X:%02X:%02X:%02X:%02X (eFuse)</span>"
@@ -785,6 +796,7 @@ static int xf16cam_http_handle(int fd)
 	char ssid[XF16CAM_SSID_MAX_LEN + 1];
 	char psk[XF16CAM_PSK_MAX_LEN + 1];
 	char mode[8];
+	char state[8];
 
 	memset(g_request, 0, sizeof(g_request));
 	header_end = NULL;
@@ -858,6 +870,19 @@ static int xf16cam_http_handle(int fd)
 		xf16cam_http_audio_json(fd);
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/power") == 0) {
 		xf16cam_http_power_json(fd);
+	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/led") == 0) {
+		if (xf16cam_form_value(body, "state", state, sizeof(state)) != 0 ||
+		    (strcmp(state, "on") != 0 && strcmp(state, "off") != 0)) {
+			xf16cam_http_message(fd, "400 Bad Request", "Invalid status light state.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		if (xf16cam_config_save_led(strcmp(state, "on") == 0) != 0) {
+			xf16cam_http_message(fd, "500 Internal Server Error", "Could not save status light setting.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		xf16cam_http_message(fd, "200 OK", strcmp(state, "on") == 0 ?
+		                     "Status light enabled. The change takes effect immediately." :
+		                     "Status light disabled. The change takes effect immediately.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/wifi") == 0) {
 		int invalid = xf16cam_form_value(body, "ssid", ssid, sizeof(ssid)) != 0 ||
 		              xf16cam_form_value(body, "password", psk, sizeof(psk)) != 0;
