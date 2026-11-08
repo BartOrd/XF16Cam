@@ -105,7 +105,7 @@ static void xf16cam_http_gpio_panel(int fd)
 	int pin;
 	char item[256];
 
-	XF16CAM_HTTP_SEND_LITERAL(fd,
+	xf16cam_http_send_text(fd,
 		"<section class='card wide'><h2>GPIO diagnostics</h2>"
 		"<p>Current pin states. Pins assigned to peripheral functions are protected. "
 		"Testing temporarily switches one selected pin to GPIO output. Use Restore afterward.</p>");
@@ -131,7 +131,7 @@ static void xf16cam_http_gpio_panel(int fd)
 				"<b>%s</b><span>%s · %s</span><span>",
 				label, mode_name, state == GPIO_PIN_HIGH ? "HIGH" : "LOW");
 			xf16cam_http_send_all(fd, item, length);
-			if (xf16cam_gpio_mode_testable(config.mode)) {
+			if (xf16cam_gpio_mode_testable(port, pin, config.mode)) {
 				length = snprintf(item, sizeof(item),
 					"<form style='display:inline' method=post action=/api/gpio>"
 					"<input type=hidden name=port value=%d><input type=hidden name=pin value=%d>"
@@ -151,7 +151,7 @@ static void xf16cam_http_gpio_panel(int fd)
 			xf16cam_http_send_text(fd, "</span></div>");
 		}
 	}
-	XF16CAM_HTTP_SEND_LITERAL(fd, "</section>");
+	xf16cam_http_send_text(fd, "</section>");
 }
 
 __xip_text
@@ -173,7 +173,7 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 		goto invalid;
 
 	HAL_GPIO_GetConfig((GPIO_Port)port, (GPIO_Pin)pin, &config);
-	if (!xf16cam_gpio_mode_testable(config.mode)) {
+	if (!xf16cam_gpio_mode_testable(port, pin, config.mode)) {
 		xf16cam_http_message(fd, "409 Conflict",
 			"This pin is assigned to an active peripheral function and is protected.");
 		return;
