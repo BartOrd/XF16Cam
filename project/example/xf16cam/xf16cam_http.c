@@ -236,7 +236,7 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 		if (!g_gpio_pa21_pwm_active) {
 			clock.clk = PWM_CLK_HOSC;
 			clock.div = PWM_SRC_CLK_DIV_1;
-			if (HAL_PWM_GroupClkCfg(PWM_GROUP1, &clock) != HAL_OK)
+			if (HAL_PWM_GroupClkCfg(PWM_GROUP_1, &clock) != HAL_OK)
 				goto pwm_error;
 			pwm.hz = 1000;
 			pwm.mode = PWM_CYCLE_MODE;
