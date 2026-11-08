@@ -185,6 +185,8 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 			xf16cam_http_message(fd, "409 Conflict", "No saved pin configuration exists.");
 			return;
 		}
+		if (port == GPIO_PORT_A && pin == 21)
+			xf16cam_board_gpio_test(0);
 		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &g_gpio_saved_config[port][pin]);
 		if (g_gpio_saved_config[port][pin].mode == GPIOx_Pn_F1_OUTPUT)
 			HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin, g_gpio_saved_state[port][pin]);
@@ -202,6 +204,8 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 		g_gpio_saved_state[port][pin] = HAL_GPIO_ReadPin((GPIO_Port)port, (GPIO_Pin)pin);
 		g_gpio_saved_valid[port][pin] = 1;
 	}
+	if (port == GPIO_PORT_A && pin == 21)
+		xf16cam_board_gpio_test(1);
 	config.mode = GPIOx_Pn_F1_OUTPUT;
 	HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &config);
 	HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin,
