@@ -83,19 +83,25 @@ static int xf16cam_gpio_pin_count(int port)
 	}
 }
 
-static int xf16cam_gpio_mode_testable(int port, int pin, GPIO_WorkMode mode)
+static const char *xf16cam_gpio_reason(int port, int pin)
 {
-	if (port == GPIO_PORT_A &&
-	    (pin <= 11 || pin == 14 || pin == 15 || pin == 16 || pin == 20 || pin == 23))
-		return 0;
-	if (port == GPIO_PORT_B)
-		return 0;
-#if (__CONFIG_CHIP_ARCH_VER == 2)
-	if (port == GPIO_PORT_C)
-		return 0;
-#endif
-	return mode == GPIOx_Pn_F0_INPUT || mode == GPIOx_Pn_F1_OUTPUT ||
-	       mode == GPIOx_Pn_F7_DISABLE;
+	if (port == GPIO_PORT_A) {
+		if (pin <= 7) return "Camera DVP data";
+		if (pin == 8) return "Camera pixel clock";
+		if (pin == 9) return "Camera master clock";
+		if (pin == 10) return "Camera HSYNC";
+		if (pin == 11) return "Camera VSYNC";
+		if (pin == 14) return "Camera sensor power-down/reset";
+		if (pin == 15) return "Board mode button";
+		if (pin == 17) return "Camera sensor I2C SCL";
+		if (pin == 18) return "Camera sensor I2C SDA";
+		if (pin == 20) return "Board reset/AP button";
+		if (pin == 21) return "Board status LED (PWM)";
+		if (pin == 23) return "Camera sensor startup control";
+	}
+	if (port == GPIO_PORT_B && pin >= 4 && pin <= 7)
+		return "Possible SPI Flash bus (MOSI/MISO/CS/CLK)";
+	return "No confirmed board function; check hardware mapping";
 }
 
 __xip_text
@@ -107,8 +113,9 @@ static void xf16cam_http_gpio_panel(int fd)
 
 	xf16cam_http_send_text(fd,
 		"<section class='card wide'><h2>GPIO diagnostics</h2>"
-		"<p>Current pin states. Pins assigned to peripheral functions are protected. "
-		"Testing temporarily switches one selected pin to GPIO output. Use Restore afterward.</p>");
+		"<p>All detected pins are exposed for testing. Each pin shows its known board function or an unknown mapping. "
+		"Changing a pin temporarily switches it to GPIO output and can stop the camera or crash the board. "
+		"Flash and camera pins are especially risky. Use Restore when the device remains responsive.</p>");
 	for (port = GPIO_PORT_A; port < GPIO_PORT_NUM; ++port) {
 		for (pin = 0; pin < xf16cam_gpio_pin_count(port); ++pin) {
 			GPIO_InitParam config;
@@ -127,26 +134,23 @@ static void xf16cam_http_gpio_panel(int fd)
 			default: mode_name = "peripheral"; break;
 			}
 			length = snprintf(item, sizeof(item),
-				"<div style='display:grid;grid-template-columns:60px 1fr auto;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #dbe2e8'>"
-				"<b>%s</b><span>%s · %s</span><span>",
-				label, mode_name, state == GPIO_PIN_HIGH ? "HIGH" : "LOW");
+				"<div style='display:grid;grid-template-columns:60px 1fr 1.3fr auto;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #dbe2e8'>"
+				"<b>%s</b><span>%s · %s</span><small>%s</small><span>",
+				label, mode_name, state == GPIO_PIN_HIGH ? "HIGH" : "LOW",
+				xf16cam_gpio_reason(port, pin));
 			xf16cam_http_send_all(fd, item, length);
-			if (xf16cam_gpio_mode_testable(port, pin, config.mode)) {
+			length = snprintf(item, sizeof(item),
+				"<form style='display:inline' method=post action=/api/gpio onsubmit=\"return confirm('This can disable the camera, buttons, or Flash bus and may crash the device. Continue?')\">"
+				"<input type=hidden name=port value=%d><input type=hidden name=pin value=%d>"
+				"<button name=state value=0>LOW</button><button name=state value=1>HIGH</button></form>",
+				port, pin);
+			xf16cam_http_send_all(fd, item, length);
+			if (g_gpio_saved_valid[port][pin]) {
 				length = snprintf(item, sizeof(item),
 					"<form style='display:inline' method=post action=/api/gpio>"
 					"<input type=hidden name=port value=%d><input type=hidden name=pin value=%d>"
-					"<button name=state value=0>LOW</button><button name=state value=1>HIGH</button></form>",
-					port, pin);
+					"<button name=action value=restore>Restore</button></form>", port, pin);
 				xf16cam_http_send_all(fd, item, length);
-				if (g_gpio_saved_valid[port][pin]) {
-					length = snprintf(item, sizeof(item),
-						"<form style='display:inline' method=post action=/api/gpio>"
-						"<input type=hidden name=port value=%d><input type=hidden name=pin value=%d>"
-						"<button name=action value=restore>Restore</button></form>", port, pin);
-					xf16cam_http_send_all(fd, item, length);
-				}
-			} else {
-				xf16cam_http_send_text(fd, "<small>protected</small>");
 			}
 			xf16cam_http_send_text(fd, "</span></div>");
 		}
@@ -173,11 +177,6 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 		goto invalid;
 
 	HAL_GPIO_GetConfig((GPIO_Port)port, (GPIO_Pin)pin, &config);
-	if (!xf16cam_gpio_mode_testable(port, pin, config.mode)) {
-		xf16cam_http_message(fd, "409 Conflict",
-			"This pin is assigned to an active peripheral function and is protected.");
-		return;
-	}
 
 	if (xf16cam_form_value(body, "action", value, sizeof(value)) == 0 &&
 	    strcmp(value, "restore") == 0) {
