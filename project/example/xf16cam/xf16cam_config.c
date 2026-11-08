@@ -10,10 +10,11 @@
 
 #define XF16CAM_CONFIG_MAGIC          (0x58464346UL)
 #define XF16CAM_CONFIG_SCHEMA_LEGACY  (1U)
-#define XF16CAM_CONFIG_SCHEMA         (2U)
+#define XF16CAM_CONFIG_SCHEMA_PRE_LED (2U)
+#define XF16CAM_CONFIG_SCHEMA         (3U)
 
-/* Schema 2 gives the first byte formerly reserved by schema 1 a defined
- * meaning. Keep the layout unchanged so schema 1 records can be migrated. */
+/* Schema 3 assigns the reserved byte to persistent board LED control without
+ * changing the on-flash record size. */
 _Static_assert(sizeof(XF16CamConfig) == 116, "XF16Cam config layout changed");
 _Static_assert(offsetof(XF16CamConfig, resolution) == 10,
 	       "XF16Cam resolution offset changed");
@@ -51,6 +52,7 @@ static void xf16cam_config_defaults(XF16CamConfig *config)
 	config->wifi_mode = XF16CAM_WIFI_AP;
 	config->media_mode = XF16CAM_MEDIA_RTSP;
 	config->resolution = XF16CAM_RESOLUTION_QVGA;
+	config->reserved = XF16CAM_CONFIG_LED_ENABLED;
 	config->checksum = xf16cam_config_checksum(config);
 }
 
@@ -97,29 +99,33 @@ int xf16cam_config_init(void)
 	if (fdcm_read(g_config_store, config, sizeof(*config)) != sizeof(*config) ||
 	    !xf16cam_config_storage_valid(config) ||
 	    (config->schema != XF16CAM_CONFIG_SCHEMA_LEGACY &&
+	     config->schema != XF16CAM_CONFIG_SCHEMA_PRE_LED &&
 	     config->schema != XF16CAM_CONFIG_SCHEMA) ||
+	    (config->schema >= XF16CAM_CONFIG_SCHEMA_PRE_LED &&
+	     config->resolution > XF16CAM_RESOLUTION_VGA) ||
 	    (config->schema == XF16CAM_CONFIG_SCHEMA &&
-	     config->resolution > XF16CAM_RESOLUTION_VGA)) {
+	     (config->reserved & ~XF16CAM_CONFIG_LED_ENABLED) != 0)) {
 		xf16cam_config_defaults(config);
 		printf("xf16cam config: using defaults (AP mode)\n");
 		return 0;
 	}
 
-	if (config->schema == XF16CAM_CONFIG_SCHEMA_LEGACY) {
-		/* The resolution byte was undefined in schema 1; never infer a
-		 * resolution from it. Preserve the user's settings, but make the first
-		 * resolution selection deterministic and conservative. */
+	if (config->schema != XF16CAM_CONFIG_SCHEMA) {
+		uint16_t previous_schema = config->schema;
+
+		if (previous_schema == XF16CAM_CONFIG_SCHEMA_LEGACY)
+			config->resolution = XF16CAM_RESOLUTION_QVGA;
 		config->schema = XF16CAM_CONFIG_SCHEMA;
-		config->resolution = XF16CAM_RESOLUTION_QVGA;
-		config->reserved = 0;
+		config->reserved = XF16CAM_CONFIG_LED_ENABLED;
 		config->checksum = xf16cam_config_checksum(config);
 		if (fdcm_write(g_config_store, config, sizeof(*config)) != sizeof(*config)) {
-			printf("xf16cam config: schema 1 migration write failed; using QVGA in RAM\n");
+			printf("xf16cam config: schema %u migration write failed; using migrated settings in RAM\n",
+			       previous_schema);
 		} else {
-			printf("xf16cam config: migrated schema 1 to 2 (resolution=QVGA)\n");
+			printf("xf16cam config: migrated schema %u to 3 (status LED enabled by default)\n",
+			       previous_schema);
 		}
 	}
-
 	printf("xf16cam config: loaded schema=%u wifi=%s media=%s resolution=%s ssid=%s\n",
 	       config->schema,
 	       config->wifi_mode == XF16CAM_WIFI_STA ? "STA" : "AP",
@@ -237,6 +243,27 @@ int xf16cam_config_save_resolution(XF16CamResolution resolution)
 	}
 	config = *xf16cam_config_get();
 	config.resolution = resolution;
+	result = xf16cam_config_write(&config);
+	OS_MutexUnlock(&g_config_lock);
+	return result;
+}
+
+int xf16cam_config_save_led(int enabled)
+{
+	XF16CamConfig config;
+	int result;
+
+	if (!g_config_lock_ready || OS_MutexLock(&g_config_lock, OS_WAIT_FOREVER) != OS_OK)
+		return -1;
+	if (g_update_active) {
+		OS_MutexUnlock(&g_config_lock);
+		return -1;
+	}
+	config = *xf16cam_config_get();
+	if (enabled)
+		config.reserved |= XF16CAM_CONFIG_LED_ENABLED;
+	else
+		config.reserved &= (uint8_t)~XF16CAM_CONFIG_LED_ENABLED;
 	result = xf16cam_config_write(&config);
 	OS_MutexUnlock(&g_config_lock);
 	return result;
