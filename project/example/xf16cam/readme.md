@@ -27,6 +27,8 @@ browser MJPEG or a single-client RTSP stream without PSRAM.
 - Stream: `rtsp://<device-ip>:8554/stream`
 - The responsive web console has Live, Network, Storage, and System tabs, with
   a focal embedded MJPEG view that can switch exclusively with RTSP mode.
+- The System tab can switch the PA21 status light on or off immediately; the
+  choice is stored with the other settings and survives reboot.
 - Browser MJPEG frames are terminated as standalone, immutable JPEG images;
   both web and RTSP clients finish sending one frame before the next capture.
 - Device information reports flash identity, the known XF16 pin map, uptime,
@@ -38,7 +40,8 @@ browser MJPEG or a single-client RTSP stream without PSRAM.
 - Browser MJPEG reconnects after a transient failure, and transmit-only MJPEG
   and PCMU workers detect a closed browser without waiting for TCP retries.
 - PA15 short-press switches Web/RTSP mode; PA20 held for three seconds restores
-  the open setup AP. PA21 blinks during startup and stays on when services are ready.
+  the open setup AP. PA21 blinks during startup and stays on when services are ready
+  when its saved status-light setting is enabled.
 - An optional one-bit SD card can be mounted, inspected, and safely ejected from
   the web page. Camera and storage share the PA23 rail through reference-counted
   ownership; the page reports total/free space and can explicitly format FAT32.
