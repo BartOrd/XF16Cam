@@ -62,6 +62,7 @@ static void xf16cam_board_task(void *arg)
 	while (1) {
 		int mode_pressed = xf16cam_board_mode_button_pressed();
 		int reset_pressed = xf16cam_board_reset_button_pressed();
+		int led_enabled = (xf16cam_config_get()->reserved & XF16CAM_CONFIG_LED_ENABLED) != 0;
 
 		if (g_board_sleeping) {
 			if (led) {
@@ -72,16 +73,22 @@ static void xf16cam_board_task(void *arg)
 			continue;
 		}
 		if (!g_board_ready) {
-			blink_ms += XF16CAM_BUTTON_POLL_MS;
-			if (blink_ms >= 250) {
-				blink_ms = 0;
-				led = !led;
-				HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN,
-				                  led ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
+			if (led_enabled) {
+				blink_ms += XF16CAM_BUTTON_POLL_MS;
+				if (blink_ms >= 250) {
+					blink_ms = 0;
+					led = !led;
+					HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN,
+					                  led ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
+				}
+			} else if (led) {
+				led = 0;
+				HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN, GPIO_PIN_LOW);
 			}
-		} else if (!led) {
-			led = 1;
-			HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN, GPIO_PIN_HIGH);
+		} else if (led != led_enabled) {
+			led = led_enabled;
+			HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN,
+			                  led ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
 		}
 		if (!g_board_ready) {
 			mode_held_ms = 0;
