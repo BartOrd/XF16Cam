@@ -20,6 +20,7 @@
 static OS_Thread_t g_board_thread;
 static volatile int g_board_ready;
 static volatile int g_board_sleeping;
+static volatile int g_gpio_test_active;
 
 static int xf16cam_button_pressed(GPIO_Pin pin)
 {
@@ -63,6 +64,11 @@ static void xf16cam_board_task(void *arg)
 		int mode_pressed = xf16cam_board_mode_button_pressed();
 		int reset_pressed = xf16cam_board_reset_button_pressed();
 		int led_enabled = (xf16cam_config_get()->reserved & XF16CAM_CONFIG_LED_ENABLED) != 0;
+
+		if (g_gpio_test_active) {
+			OS_MSleep(XF16CAM_BUTTON_POLL_MS);
+			continue;
+		}
 
 		if (g_board_sleeping) {
 			if (led) {
@@ -161,6 +167,11 @@ int xf16cam_board_init(void)
 void xf16cam_board_set_ready(void)
 {
 	g_board_ready = 1;
+}
+
+void xf16cam_board_gpio_test(int enabled)
+{
+	g_gpio_test_active = enabled != 0;
 }
 
 void xf16cam_board_prepare_sleep(void)
