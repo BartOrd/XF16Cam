@@ -9,6 +9,7 @@
 #include "kernel/os/os.h"
 #include "driver/chip/hal_flash.h"
 #include "driver/chip/hal_gpio.h"
+#include "driver/chip/hal_pwm.h"
 #include "driver/chip/hal_prcm.h"
 #include "driver/chip/hal_wdg.h"
 #include "driver/chip/system_chip.h"
@@ -65,6 +66,8 @@ static uint32_t g_flash_size;
 static GPIO_InitParam g_gpio_saved_config[3][24];
 static GPIO_PinState g_gpio_saved_state[3][24];
 static uint8_t g_gpio_saved_valid[3][24];
+static int g_gpio_pa21_pwm_active;
+static int g_gpio_pa21_pwm_max;
 
 static void xf16cam_http_message(int fd, const char *status, const char *message);
 static void xf16cam_http_send_text(int fd, const char *text);
@@ -145,6 +148,15 @@ static void xf16cam_http_gpio_panel(int fd)
 				"<button name=state value=0>LOW</button><button name=state value=1>HIGH</button></form>",
 				port, pin);
 			xf16cam_http_send_all(fd, item, length);
+			if (port == GPIO_PORT_A && pin == 21) {
+				length = snprintf(item, sizeof(item),
+					"<form style='display:inline' method=post action=/api/gpio>"
+					"<input type=hidden name=port value=0><input type=hidden name=pin value=21>"
+					"<input type=range name=brightness min=0 max=100 value=50 "
+					"onchange='this.form.requestSubmit()' aria-label='PA21 LED brightness'>"
+					"<input type=hidden name=action value=brightness></form>");
+				xf16cam_http_send_all(fd, item, length);
+			}
 			if (g_gpio_saved_valid[port][pin]) {
 				length = snprintf(item, sizeof(item),
 					"<form style='display:inline' method=post action=/api/gpio>"
@@ -184,13 +196,70 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 			xf16cam_http_message(fd, "409 Conflict", "No saved pin configuration exists.");
 			return;
 		}
+		if (port == GPIO_PORT_A && pin == 21) {
+			if (g_gpio_pa21_pwm_active) {
+				HAL_PWM_EnableCh(PWM_GROUP1_CH2, PWM_CYCLE_MODE, 0);
+				HAL_PWM_ChDeinit(PWM_GROUP1_CH2);
+				g_gpio_pa21_pwm_active = 0;
+			}
+		}
+		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &g_gpio_saved_config[port][pin]);
 		if (port == GPIO_PORT_A && pin == 21)
 			xf16cam_board_gpio_test(0);
-		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &g_gpio_saved_config[port][pin]);
 		if (g_gpio_saved_config[port][pin].mode == GPIOx_Pn_F1_OUTPUT)
 			HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin, g_gpio_saved_state[port][pin]);
 		g_gpio_saved_valid[port][pin] = 0;
 		xf16cam_http_message(fd, "200 OK", "Original GPIO configuration restored.");
+		return;
+	}
+
+	if (xf16cam_form_value(body, "action", value, sizeof(value)) == 0 &&
+	    strcmp(value, "brightness") == 0) {
+		char brightness_text[16];
+		char *end;
+		long brightness;
+		PWM_ClkParam clock;
+		PWM_ChInitParam pwm;
+
+		if (port != GPIO_PORT_A || pin != 21 ||
+		    xf16cam_form_value(body, "brightness", brightness_text, sizeof(brightness_text)) != 0)
+			goto invalid;
+		brightness = strtol(brightness_text, &end, 10);
+		if (*brightness_text == '\0' || *end != '\0' || brightness < 0 || brightness > 100)
+			goto invalid;
+		if (!g_gpio_saved_valid[port][pin]) {
+			g_gpio_saved_config[port][pin] = config;
+			g_gpio_saved_state[port][pin] = HAL_GPIO_ReadPin((GPIO_Port)port, (GPIO_Pin)pin);
+			g_gpio_saved_valid[port][pin] = 1;
+		}
+		xf16cam_board_gpio_test(1);
+		if (!g_gpio_pa21_pwm_active) {
+			clock.clk = PWM_CLK_HOSC;
+			clock.div = PWM_SRC_CLK_DIV_1;
+			if (HAL_PWM_GroupClkCfg(PWM_GROUP1, &clock) != HAL_OK)
+				goto pwm_error;
+			pwm.hz = 1000;
+			pwm.mode = PWM_CYCLE_MODE;
+			pwm.polarity = PWM_HIGHLEVE;
+			g_gpio_pa21_pwm_max = HAL_PWM_ChInit(PWM_GROUP1_CH2, &pwm);
+			if (g_gpio_pa21_pwm_max <= 0)
+				goto pwm_error;
+			g_gpio_pa21_pwm_active = 1;
+			if (HAL_PWM_EnableCh(PWM_GROUP1_CH2, PWM_CYCLE_MODE, 1) != HAL_OK)
+				goto pwm_error;
+		}
+		if (HAL_PWM_ChSetDutyRatio(PWM_GROUP1_CH2,
+			(uint16_t)((g_gpio_pa21_pwm_max * brightness) / 100)) != HAL_OK)
+			goto pwm_error;
+		xf16cam_http_message(fd, "200 OK", "PA21 PWM brightness updated. Use Restore to return to the board LED.");
+		return;
+pwm_error:
+		if (g_gpio_pa21_pwm_active) {
+			HAL_PWM_EnableCh(PWM_GROUP1_CH2, PWM_CYCLE_MODE, 0);
+			HAL_PWM_ChDeinit(PWM_GROUP1_CH2);
+			g_gpio_pa21_pwm_active = 0;
+		}
+		xf16cam_http_message(fd, "500 Internal Server Error", "PA21 PWM initialization or update failed.");
 		return;
 	}
 
@@ -203,8 +272,14 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 		g_gpio_saved_state[port][pin] = HAL_GPIO_ReadPin((GPIO_Port)port, (GPIO_Pin)pin);
 		g_gpio_saved_valid[port][pin] = 1;
 	}
-	if (port == GPIO_PORT_A && pin == 21)
+	if (port == GPIO_PORT_A && pin == 21) {
+		if (g_gpio_pa21_pwm_active) {
+			HAL_PWM_EnableCh(PWM_GROUP1_CH2, PWM_CYCLE_MODE, 0);
+			HAL_PWM_ChDeinit(PWM_GROUP1_CH2);
+			g_gpio_pa21_pwm_active = 0;
+		}
 		xf16cam_board_gpio_test(1);
+	}
 	config.mode = GPIOx_Pn_F1_OUTPUT;
 	HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &config);
 	HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin,
