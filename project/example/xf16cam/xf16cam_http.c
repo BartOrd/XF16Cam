@@ -67,6 +67,8 @@ static GPIO_PinState g_gpio_saved_state[3][24];
 static uint8_t g_gpio_saved_valid[3][24];
 
 static void xf16cam_http_message(int fd, const char *status, const char *message);
+static void xf16cam_http_send_text(int fd, const char *text);
+static int xf16cam_http_send_all(int fd, const void *data, size_t length);
 static int xf16cam_form_value(const char *body, const char *key, char *out, size_t out_size);
 
 static int xf16cam_gpio_pin_count(int port)
@@ -81,8 +83,17 @@ static int xf16cam_gpio_pin_count(int port)
 	}
 }
 
-static int xf16cam_gpio_mode_testable(GPIO_WorkMode mode)
+static int xf16cam_gpio_mode_testable(int port, int pin, GPIO_WorkMode mode)
 {
+	if (port == GPIO_PORT_A &&
+	    (pin <= 11 || pin == 14 || pin == 15 || pin == 16 || pin == 20 || pin == 23))
+		return 0;
+	if (port == GPIO_PORT_B)
+		return 0;
+#if (__CONFIG_CHIP_ARCH_VER == 2)
+	if (port == GPIO_PORT_C)
+		return 0;
+#endif
 	return mode == GPIOx_Pn_F0_INPUT || mode == GPIOx_Pn_F1_OUTPUT ||
 	       mode == GPIOx_Pn_F7_DISABLE;
 }
