@@ -154,11 +154,15 @@ __xip_rodata static const char g_page_head[] =
 	"grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:16px}.wide{grid-column:1/-1}.grid{display:grid;"
 	"grid-template-columns:max-content 1fr;gap:7px 14px}.grid b{color:#43515e}form{margin:8px 0}label{display:block;margin:8px 0}"
 	"input,button{font:inherit;min-height:44px;padding:9px 11px;margin:4px 0;border:1px solid #b9c5cd;border-radius:7px}input{width:100%;background:#fff;font-size:16px}"
-	"button{background:#f7f9fa;cursor:pointer}button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
+	"button{background:#f7f9fa;cursor:pointer}
+	".gpioGroups{display:grid;gap:12px}.gpioGroup h3{font-size:.95rem;margin:8px 0}.gpioRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}"
+	".gpioRow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:8px;border:1px solid var(--line);border-radius:8px}"
+	".gpioInfo{display:grid;gap:3px;min-width:0}.gpioInfo small{overflow-wrap:anywhere}.gpioControls{display:flex;flex-wrap:wrap;gap:3px;flex:none}"
+	".gpioControls button{min-height:32px;padding:4px 7px;margin:0;font-size:12px}.gpioLocked{font-size:12px;color:var(--muted)}"button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
 	"small{color:var(--muted)}a{color:#096b99}.rtsp{overflow-wrap:anywhere}.nets{display:grid;gap:7px;margin:10px 0}.net{width:100%;display:flex;gap:10px;"
 	"align-items:center;justify-content:space-between;text-align:left;margin:0;background:#fff}.net span:first-child{min-width:0;overflow-wrap:anywhere}.net span:last-child{flex:none;white-space:nowrap}.net.sel{border-color:var(--brand);"
 	"box-shadow:0 0 0 2px #176b5b33;background:#f3faf8}.net.empty{justify-content:center;color:var(--muted)}@media(max-width:680px){header{align-items:flex-start}.panel.on{grid-template-columns:1fr}"
-	".wide{grid-column:auto}.screen{min-height:180px}.grid{grid-template-columns:1fr}.grid b{margin-top:5px}}</style></head><body>";
+	".wide{grid-column:auto}.screen{min-height:180px}.grid{grid-template-columns:1fr}.gpioRows{grid-template-columns:1fr}.grid b{margin-top:5px}}</style></head><body>";
 
 __xip_text
 static int xf16cam_http_send_all(int fd, const void *data, size_t length)
