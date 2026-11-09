@@ -152,12 +152,12 @@ static void xf16cam_board_task(void *arg)
 							XF16CAM_MEDIA_RTSP : XF16CAM_MEDIA_WEB;
 
 						mode_press_accepted = 0;
-						printf("xf16cam PA15: stable press released, switching media mode to %s\\n",
+						printf("xf16cam PA15: stable press released, switching media mode to %s\n",
 						       next == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
 						if (xf16cam_config_save_media_and_begin_update(next) == 0)
 							xf16cam_board_reboot_now();
 						else
-							printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\\n");
+							printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\n");
 					}
 				}
 			}
