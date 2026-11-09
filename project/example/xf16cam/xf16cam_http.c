@@ -153,7 +153,7 @@ __xip_rodata static const char g_page_head[] =
 	"grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:16px}.wide{grid-column:1/-1}.grid{display:grid;"
 	"grid-template-columns:max-content 1fr;gap:7px 14px}.grid b{color:#43515e}form{margin:8px 0}label{display:block;margin:8px 0}"
 	"input,button{font:inherit;min-height:44px;padding:9px 11px;margin:4px 0;border:1px solid #b9c5cd;border-radius:7px}input{width:100%;background:#fff;font-size:16px}"
-	"button{background:#f7f9fa}button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
+	"button{background:#f7f9fa;cursor:pointer}button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
 	"small{color:var(--muted)}a{color:#096b99}.rtsp{overflow-wrap:anywhere}.nets{display:grid;gap:7px;margin:10px 0}.net{width:100%;display:flex;gap:10px;"
 	"align-items:center;justify-content:space-between;text-align:left;margin:0;background:#fff}.net span:first-child{min-width:0;overflow-wrap:anywhere}.net span:last-child{flex:none;white-space:nowrap}.net.sel{border-color:var(--brand);"
 	"box-shadow:0 0 0 2px #176b5b33;background:#f3faf8}.net.empty{justify-content:center;color:var(--muted)}@media(max-width:680px){header{align-items:flex-start}.panel.on{grid-template-columns:1fr}"
@@ -398,18 +398,18 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd, "</span></span><b>Light intensity</b><span><span id=intensityStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_STRONGER(config) ? "Stronger (PB3 OUTPUT LOW)" : "Weaker (PB3 INPUT)");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
-	                  "</span></span></div><form method=post action=/api/light>"
-	                  "<button type=submit onclick='lightSubmit(this);return false' name=light value=disabled");
+	                  "</span></span></div><form method=post action=/api/light onsubmit='return lightSubmit(event)'>"
+	                  "<button name=light value=disabled");
 	if (!XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button type=submit onclick='lightSubmit(this);return false' name=light value=enabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button name=light value=enabled");
 	if (XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light>"
-	                  "<button type=submit onclick='lightSubmit(this);return false' name=intensity value=weaker");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light onsubmit='return lightSubmit(event)'>"
+	                  "<button name=intensity value=weaker");
 	if (!XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button type=submit onclick='lightSubmit(this);return false' name=intensity value=stronger");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button name=intensity value=stronger");
 	if (XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form><span id=lightResult aria-live=polite></span></section></div>");
@@ -509,15 +509,14 @@ static void xf16cam_http_page(int fd)
 	                  "function videoRetry(){clearTimeout(vt);if(!vh&&!D.hidden)vt=setTimeout(videoStart,1500)}"
 	                  "function tab(id){A('.panel').forEach(e=>e.classList.toggle('on',e.id==id));"
 	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)})}"
-	                  "function lightSubmit(b){let f=b.form,s=$('#lightResult'),k=b.name,v=b.value;"
-	                  "if(!f||b.disabled)return false;b.disabled=true;s.textContent='Saving...';"
-	                  "fetch(f.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-	                  "body:encodeURIComponent(k)+'='+encodeURIComponent(v)})"
-	                  ".then(r=>{if(!r.ok)throw 0;return r.text()})"
-	                  ".then(()=>{if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
+	                  "async function lightSubmit(e){e.preventDefault();let f=e.target,b=e.submitter,s=$('#lightResult');"
+	                  "if(!b||b.disabled)return false;let k=b.name,v=b.value;b.disabled=true;s.textContent='Saving...';"
+	                  "try{let r=await fetch(f.action,{method:'POST',body:new URLSearchParams([[k,v]])});"
+	                  "if(!r.ok)throw 0;await r.text();"
+	                  "if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
 	                  "else $('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';"
-	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'})"
-	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
+	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'}"
+	                  "catch(e){s.textContent='Save failed';b.disabled=false}return false}"
 	                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
