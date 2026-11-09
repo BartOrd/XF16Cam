@@ -393,7 +393,7 @@ static void xf16cam_http_page(int fd)
 
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<div id=light class=panel><section class='card wide'><h2>Light</h2>"
-	                  "<p>White LED control. Settings are saved to flash and restored at startup.</p>"
+	                  ""
 	                  "<div class=grid><b>Light</b><span>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_ENABLED(config) ? "Enabled (PB20 HIGH)" : "Disabled (PB20 LOW)");
 	XF16CAM_HTTP_SEND_LITERAL(fd, "</span><b>Light intensity</b><span>");

@@ -36,11 +36,11 @@
 #include "xf16cam_version.h"
 
 #define JPEG_ONLINE_EN           (1)
-#define JPEG_BUFFER_COUNT        (1)
+#define JPEG_BUFFER_COUNT_MAX    (3)
 #define JPEG_MPART_EN            (0)
 #define JPEG_BUFF_SIZE           (100 * 1024)
-#define JPEG_SRAM_SIZE           \
-	(JPEG_BUFFER_COUNT * (JPEG_BUFF_SIZE + CAMERA_JPEG_HEADER_LEN + 1023U))
+#define JPEG_BUFFER_ARENA_SIZE(count) \
+	((count) * (JPEG_BUFF_SIZE + CAMERA_JPEG_HEADER_LEN + 1023U))
 #define JPEG_IMAGE_WIDTH         (320)
 #define JPEG_IMAGE_HEIGHT        (240)
 #define XF16CAM_RTSP_PORT        (8554)
@@ -50,9 +50,8 @@
 #define XF16CAM_RTSP_HANDSHAKE_MS (10000U)
 #define XF16CAM_RTSP_IO_TIMEOUT_MS (2000)
 
-_Static_assert(JPEG_SRAM_SIZE >= JPEG_BUFFER_COUNT *
-	       (JPEG_BUFF_SIZE + CAMERA_JPEG_HEADER_LEN + 1023U),
-	       "JPEG arena cannot hold aligned buffers");
+_Static_assert(JPEG_BUFFER_COUNT_MAX <= CAMERA_BUFF_CNT_MAX,
+	       "JPEG buffer count exceeds the camera driver limit");
 
 #define XF16_SENSOR_I2C_ID       I2C0_ID
 #define XF16_CTRL_PORT           GPIO_PORT_A
@@ -71,6 +70,8 @@ static int xf16_board_camera_power_prepare(void);
 static void xf16_board_camera_power_down(void);
 
 static uint8_t *gmemaddr;
+static uint8_t g_jpeg_buffer_count;
+static int g_video_capture_active;
 static CAMERA_Mgmt mem_mgmt;
 static OS_Mutex_t g_camera_lock;
 static int g_camera_lock_ready;
@@ -148,28 +149,32 @@ static void xf16_board_camera_power_down(void)
 __xip_text
 static int camera_mem_create(CAMERA_JpegCfg *jpeg_cfg, CAMERA_Mgmt *mgmt)
 {
-	uint8_t *addr;
+	uint8_t *addr = NULL;
 	uint8_t *end_addr;
 	uint8_t *cursor;
+	uint32_t arena_size = 0;
+	uint32_t count;
 	uint32_t i;
 	(void)jpeg_cfg;
 
-	addr = (uint8_t *)malloc(JPEG_SRAM_SIZE);
-	if (!addr) {
-		printf("malloc fail\n");
+	for (count = JPEG_BUFFER_COUNT_MAX; count > 0; --count) {
+		arena_size = JPEG_BUFFER_ARENA_SIZE(count);
+		addr = (uint8_t *)malloc(arena_size);
+		if (addr != NULL)
+			break;
+	}
+	if (addr == NULL) {
+		printf("jpeg capture arena allocation failed\n");
 		return -1;
 	}
-	memset(addr, 0, JPEG_SRAM_SIZE);
-	end_addr = addr + JPEG_SRAM_SIZE;
-	printf("malloc addr: %p -> %p\n", addr, end_addr);
+	memset(addr, 0, arena_size);
+	end_addr = addr + arena_size;
+	printf("jpeg arena: %p -> %p\n", addr, end_addr);
 
-	/* Online JPEG mode does not consume a YUV framebuffer. Still capture keeps
-	 * this single buffer immutable until the next capture call; both transports
-	 * finish sending the current frame before requesting another. */
 	mgmt->yuv_buf.addr = NULL;
 	mgmt->yuv_buf.size = 0;
 	cursor = addr;
-	for (i = 0; i < JPEG_BUFFER_COUNT; i++) {
+	for (i = 0; i < count; i++) {
 		mgmt->jpeg_buf[i].addr =
 			(uint8_t *)ALIGN_1K((uint32_t)cursor + CAMERA_JPEG_HEADER_LEN);
 		mgmt->jpeg_buf[i].size = JPEG_BUFF_SIZE;
@@ -180,8 +185,10 @@ static int camera_mem_create(CAMERA_JpegCfg *jpeg_cfg, CAMERA_Mgmt *mgmt)
 			return -1;
 		}
 	}
-	printf("xf16cam buffers: count=%u bytes_each=%u arena=%u\n",
-	       JPEG_BUFFER_COUNT, JPEG_BUFF_SIZE, JPEG_SRAM_SIZE);
+	g_jpeg_buffer_count = (uint8_t)count;
+	printf("xf16cam buffers: count=%u bytes_each=%u arena=%lu\n",
+	       (unsigned int)g_jpeg_buffer_count, JPEG_BUFF_SIZE,
+	       (unsigned long)arena_size);
 
 	gmemaddr = addr;
 	return 0;
@@ -190,6 +197,8 @@ static int camera_mem_create(CAMERA_JpegCfg *jpeg_cfg, CAMERA_Mgmt *mgmt)
 __xip_text
 static void camera_mem_destroy(void)
 {
+	g_video_capture_active = 0;
+	g_jpeg_buffer_count = 0;
 	if (gmemaddr) {
 		free(gmemaddr);
 		gmemaddr = NULL;
@@ -419,11 +428,44 @@ int xf16cam_media_client_connected(int fd)
 /* Still-mode acquisition leaves the returned buffer immutable until the next
  * call. Video mode rotates immediately and can overwrite a slow socket send. */
 __xip_text
+static int xf16cam_capture_stream_start(void)
+{
+	if (g_jpeg_buffer_count > 1) {
+		xf16cam_sensor_prepare_capture();
+		if (HAL_CAMERA_CaptureVideoStart() == 0) {
+			g_video_capture_active = 1;
+			printf("xf16cam capture: continuous video mode with %u JPEG buffers\n",
+			       (unsigned int)g_jpeg_buffer_count);
+			return 0;
+		}
+		printf("xf16cam capture: video mode unavailable, using still capture\n");
+	}
+	g_video_capture_active = 0;
+	return 0;
+}
+
+__xip_text
+static void xf16cam_capture_stream_stop(void)
+{
+	if (g_video_capture_active) {
+		HAL_CAMERA_CaptureVideoStop();
+		g_video_capture_active = 0;
+	}
+}
+
+__xip_text
 static int xf16cam_capture_jpeg(CAMERA_JpegBuffInfo *info, uint8_t **jpeg,
 				uint32_t *jpeg_len)
 {
-	xf16cam_sensor_prepare_capture();
-	if (HAL_CAMERA_CaptureImage(CAMERA_OUT_JPEG, info, 1) != 0) {
+	int capture;
+
+	if (g_video_capture_active) {
+		capture = HAL_CAMERA_CaptureVideoData(info) == 0 ? 0 : -1;
+	} else {
+		xf16cam_sensor_prepare_capture();
+		capture = HAL_CAMERA_CaptureImage(CAMERA_OUT_JPEG, info, 1) == 0 ? 0 : -1;
+	}
+	if (capture != 0) {
 		++g_media_info.capture_errors;
 		return -1;
 	}
@@ -459,6 +501,7 @@ static int xf16cam_mjpeg_stream(int fd)
 	if (xf16cam_send_all(fd, response, sizeof(response) - 1) != 0)
 		return -1;
 	printf("xf16cam WEB PLAY: multipart MJPEG\n");
+	xf16cam_capture_stream_start();
 	while (!xf16cam_update_active() && xf16cam_media_client_connected(fd)) {
 		CAMERA_JpegBuffInfo info;
 		uint8_t *jpeg;
@@ -484,6 +527,7 @@ static int xf16cam_mjpeg_stream(int fd)
 		    xf16cam_send_all(fd, "\r\n", 2) != 0)
 			break;
 	}
+	xf16cam_capture_stream_stop();
 	printf("xf16cam WEB client stopped\n");
 	return 0;
 }
@@ -885,6 +929,7 @@ static int xf16cam_stream_client(int fd, const char *ip)
 
 	printf("xf16cam PLAY: RTP/JPEG%s over RTSP TCP\n",
 	       session.audio_setup ? " + PCMU/8000" : "");
+	xf16cam_capture_stream_start();
 	while (!xf16cam_update_active()) {
 		CAMERA_JpegBuffInfo info;
 		XF16CamJpeg jpg;
@@ -935,6 +980,7 @@ static int xf16cam_stream_client(int fd, const char *ip)
 	}
 
 stopped:
+	xf16cam_capture_stream_stop();
 	if (session.audio_acquired)
 		xf16cam_audio_release();
 	if (camera_acquired)
