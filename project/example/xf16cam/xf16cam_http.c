@@ -880,6 +880,14 @@ static int xf16cam_gpio_testable(GPIO_Port port, GPIO_Pin pin)
 	}
 }
 
+static int xf16cam_gpio_available(GPIO_Port port, GPIO_Pin pin, const GPIO_InitParam *config)
+{
+	return xf16cam_gpio_testable(port, pin) &&
+	       (config->mode == GPIOx_Pn_F7_DISABLE ||
+	        config->mode == GPIOx_Pn_F0_INPUT ||
+	        g_gpio_snapshots[port][pin].valid);
+}
+
 static const char *xf16cam_gpio_description(GPIO_Port port, unsigned int pin)
 {
 	if (port == GPIO_PORT_A) {
@@ -960,7 +968,7 @@ static void xf16cam_http_gpio_json(int fd)
 			                  first ? "" : ",", xf16cam_gpio_port_name((GPIO_Port)port), pin,
 			                  (unsigned int)config.mode, level == GPIO_PIN_HIGH ? "HIGH" : "LOW",
 			                  (unsigned int)config.driving, (unsigned int)config.pull,
-			                  xf16cam_gpio_testable((GPIO_Port)port, (GPIO_Pin)pin) ? "true" : "false",
+			                  xf16cam_gpio_available((GPIO_Port)port, (GPIO_Pin)pin, &config) ? "true" : "false",
 			                  xf16cam_gpio_description((GPIO_Port)port, pin));
 			if (length > 0 && (size_t)length < sizeof(row))
 				xf16cam_http_send_all(fd, row, (size_t)length);
@@ -1036,6 +1044,11 @@ static void xf16cam_http_gpio_control(int fd, const char *body)
 	snapshot = &g_gpio_snapshots[port][pin];
 	if (!snapshot->valid) {
 		HAL_GPIO_GetConfig(port, pin, &snapshot->config);
+		if (snapshot->config.mode != GPIOx_Pn_F7_DISABLE &&
+		    snapshot->config.mode != GPIOx_Pn_F0_INPUT) {
+			xf16cam_http_message(fd, "403 Forbidden", "This pin is currently assigned to an active peripheral and is locked.");
+			return;
+		}
 		snapshot->state = HAL_GPIO_ReadPin(port, pin);
 		snapshot->valid = 1;
 	}
