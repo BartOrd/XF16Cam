@@ -957,15 +957,23 @@ static int xf16cam_http_handle(int fd)
 		xf16cam_light_apply();
 		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
-		if (xf16cam_form_value(body, "mode", mode, sizeof(mode)) != 0 ||
-		    xf16cam_config_save_media(strcmp(mode, "web") == 0 ? XF16CAM_MEDIA_WEB :
-		                              strcmp(mode, "rtsp") == 0 ? XF16CAM_MEDIA_RTSP : 0) != 0) {
+		XF16CamMediaMode media_mode;
+
+		if (xf16cam_form_value(body, "mode", mode, sizeof(mode)) != 0) {
 			xf16cam_http_message(fd, "400 Bad Request", "Invalid camera mode.");
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
-		if (xf16cam_update_begin() != 0) {
+		if (strcmp(mode, "web") == 0)
+			media_mode = XF16CAM_MEDIA_WEB;
+		else if (strcmp(mode, "rtsp") == 0)
+			media_mode = XF16CAM_MEDIA_RTSP;
+		else {
+			xf16cam_http_message(fd, "400 Bad Request", "Invalid camera mode.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		if (xf16cam_config_save_media_and_begin_update(media_mode) != 0) {
 			xf16cam_http_message(fd, "409 Conflict",
-			                     "Camera mode was saved, but reboot was deferred by another update.");
+			                     "Camera mode could not be saved or another operation is already in progress.");
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
 		xf16cam_http_message(fd, "200 OK", "Camera mode saved. Rebooting...");
