@@ -285,8 +285,16 @@ pwm_error:
 		xf16cam_http_message(fd, "500 Internal Server Error", "PA21 PWM initialization or update failed.");
 		return;
 	}
-	if (xf16cam_gpio_apply(port, pin, action) != 0) goto invalid;
-	xf16cam_http_message(fd, "200 OK", "GPIO updated.");
+	{
+		int result = xf16cam_gpio_apply(port, pin, action);
+		if (result == -3) {
+			xf16cam_http_message(fd, "409 Conflict", "GPIO mode readback did not match the requested configuration.");
+			return;
+		}
+		if (result != 0) goto invalid;
+	}
+	xf16cam_http_message(fd, "200 OK", port == GPIO_PORT_A && pin == 21 && strcmp(action, "disable") == 0 ?
+	                     "PA21 LED is off; the pin remains OUTPUT LOW." : "GPIO updated and mode verified.");
 	return;
 invalid:
 	xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO port, pin, or action.");
@@ -777,8 +785,8 @@ static void xf16cam_http_page(int fd)
 	                  "async function gpioSend(pins,action){if(!pins.length){gpioStatus('Select pins first');return}if(pins.length>10){gpioStatus('Maximum 10 pins');return}"
 	                  "if(['low','high','disable'].includes(action)&&!confirm('This can interrupt camera, SD, Flash or attached hardware. Continue?'))return;"
 	                  "let data=new URLSearchParams({pins:pins.join(','),action});try{let r=await fetch('/api/gpio/bulk',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data});"
-	                  "if(!r.ok)throw Error('HTTP '+r.status);gpioStatus('Done · '+pins.length+' pins');pins.forEach(v=>{let row=$('[data-pin=\"'+v+'\"]');if(!row)return;"
-	                  "row.querySelector('.gpio-state').textContent=action==='low'||action==='high'?'OUTPUT · '+action.toUpperCase():action.toUpperCase();"
+	                  "if(!r.ok)throw Error((await r.text())||('HTTP '+r.status));gpioStatus('Done · '+pins.length+' pins');pins.forEach(v=>{let row=$('[data-pin=\"'+v+'\"]');if(!row)return;"
+	                  "let [p,n]=v.split(':');row.querySelector('.gpio-state').textContent=action==='low'||action==='high'||(action==='disable'&&p==='0'&&n==='21')?'OUTPUT · '+(action==='high'?'HIGH':'LOW'):action.toUpperCase();"
 	                  "if(action==='restore')row.querySelectorAll('button').forEach(x=>{if(x.textContent==='RESTORE')x.disabled=true})})}catch(e){gpioStatus('Failed: '+e.message)}}"
 	                  "function gpioBulk(){gpioSend(gpioSelected(),$('#gpioBulkAction').value)}"
 	                  "function gpioBulkGroup(b,a){let d=b.closest('details'),p=[...d.querySelectorAll('.gpio-check:checked')].map(e=>e.value);if(!p.length)p=[...d.querySelectorAll('.gpio-check')].map(e=>e.value).slice(0,10);gpioSend(p,a)}"
