@@ -6,6 +6,7 @@
 #include <strings.h>
 
 #include "compiler.h"
+#include "driver/chip/hal_gpio.h"
 #include "kernel/os/os.h"
 #include "driver/chip/hal_flash.h"
 #include "driver/chip/hal_prcm.h"
@@ -804,6 +805,226 @@ fail:
 	xf16cam_update_end();
 	xf16cam_http_message(fd, "400 Bad Request", "OTA verification failed; the current firmware is unchanged.");
 	return XF16CAM_HTTP_KEEP_RUNNING;
+}
+
+
+#define XF16CAM_GPIO_MAX_PIN_COUNT 24
+
+typedef struct {
+	GPIO_InitParam config;
+	GPIO_PinState state;
+	uint8_t valid;
+} XF16CamGPIOSnapshot;
+
+static XF16CamGPIOSnapshot g_gpio_snapshots[GPIO_PORT_NUM][XF16CAM_GPIO_MAX_PIN_COUNT];
+
+static unsigned int xf16cam_gpio_pin_count(GPIO_Port port)
+{
+	switch (port) {
+	case GPIO_PORT_A:
+		return GPIOA_PIN_NUM;
+	case GPIO_PORT_B:
+		return GPIOB_PIN_NUM;
+#if (__CONFIG_CHIP_ARCH_VER == 2)
+	case GPIO_PORT_C:
+		return GPIOC_PIN_NUM;
+#endif
+	default:
+		return 0;
+	}
+}
+
+static char xf16cam_gpio_port_name(GPIO_Port port)
+{
+	switch (port) {
+	case GPIO_PORT_A: return 'A';
+	case GPIO_PORT_B: return 'B';
+#if (__CONFIG_CHIP_ARCH_VER == 2)
+	case GPIO_PORT_C: return 'C';
+#endif
+	default: return '?';
+	}
+}
+
+static int xf16cam_gpio_testable(GPIO_Port port, GPIO_Pin pin)
+{
+	switch (port) {
+	case GPIO_PORT_A:
+		return pin == GPIO_PIN_12 || pin == GPIO_PIN_13 || pin == GPIO_PIN_19;
+	case GPIO_PORT_B:
+		return (pin >= GPIO_PIN_8 && pin <= GPIO_PIN_15) || pin == GPIO_PIN_21;
+#if (__CONFIG_CHIP_ARCH_VER == 2)
+	case GPIO_PORT_C:
+		return pin <= GPIO_PIN_12;
+#endif
+	default:
+		return 0;
+	}
+}
+
+static const char *xf16cam_gpio_description(GPIO_Port port, unsigned int pin)
+{
+	if (port == GPIO_PORT_A) {
+		if (pin <= 7) return "Camera DVP data";
+		if (pin == 8) return "Camera pixel clock";
+		if (pin == 9) return "Camera master clock";
+		if (pin == 10) return "Camera HSYNC";
+		if (pin == 11) return "Camera VSYNC";
+		if (pin == 12 || pin == 13 || pin == 19) return "Unmapped GPIO candidate";
+		if (pin == 14) return "Camera sensor power-down/reset";
+		if (pin == 15) return "Board mode button";
+		if (pin == 16) return "Battery sense ADC6";
+		if (pin == 17) return "Camera sensor I2C SCL";
+		if (pin == 18) return "Camera sensor I2C SDA";
+		if (pin == 20) return "Board reset/AP button";
+		if (pin == 21) return "Board status LED";
+		if (pin == 22) return "IR LED on PTZ board variant";
+		if (pin == 23) return "Camera and SD power rail";
+	}
+	if (port == GPIO_PORT_B) {
+		if (pin == 0) return "UART console TX";
+		if (pin == 1) return "UART console RX";
+		if (pin >= 2 && pin <= 7) return "SPI flash / alternate PTZ mapping; locked";
+		if (pin >= 8 && pin <= 13) return "Unmapped GPIO candidate";
+		if (pin == 14 || pin == 15) return "Unmapped GPIO; possible PTZ candidate";
+		if (pin >= 16 && pin <= 18) return "SD card bus";
+		if (pin == 19) return "Setup/reset button on PTZ variant";
+		if (pin == 20) return "White illumination LED";
+		if (pin == 21) return "Unmapped GPIO candidate";
+	}
+	if (port == GPIO_PORT_C)
+		return "Unmapped GPIO candidate";
+	return "No confirmed function";
+}
+
+static void xf16cam_gpio_restore_pin(GPIO_Port port, GPIO_Pin pin)
+{
+	XF16CamGPIOSnapshot *snapshot = &g_gpio_snapshots[port][pin];
+
+	if (!snapshot->valid)
+		return;
+	HAL_GPIO_Init(port, pin, &snapshot->config);
+	if (snapshot->config.mode == GPIOx_Pn_F1_OUTPUT)
+		HAL_GPIO_WritePin(port, pin, snapshot->state);
+	snapshot->valid = 0;
+}
+
+static void xf16cam_gpio_restore_all(void)
+{
+	unsigned int port;
+	unsigned int pin;
+
+	for (port = 0; port < GPIO_PORT_NUM; ++port) {
+		for (pin = 0; pin < xf16cam_gpio_pin_count((GPIO_Port)port); ++pin)
+			xf16cam_gpio_restore_pin((GPIO_Port)port, (GPIO_Pin)pin);
+	}
+}
+
+static void xf16cam_http_gpio_json(int fd)
+{
+	char row[240];
+	unsigned int port;
+	unsigned int pin;
+	int first = 1;
+	int length;
+
+	xf16cam_http_begin(fd, "200 OK", "application/json");
+	xf16cam_http_send_text(fd, "{\"pins\":[");
+	for (port = 0; port < GPIO_PORT_NUM; ++port) {
+		for (pin = 0; pin < xf16cam_gpio_pin_count((GPIO_Port)port); ++pin) {
+			GPIO_InitParam config;
+			GPIO_PinState level = HAL_GPIO_ReadPin((GPIO_Port)port, (GPIO_Pin)pin);
+
+			HAL_GPIO_GetConfig((GPIO_Port)port, (GPIO_Pin)pin, &config);
+			length = snprintf(row, sizeof(row),
+			                  "%s{\"port\":\"%c\",\"pin\":%u,\"mode\":%u,\"level\":\"%s\","
+			                  "\"drive\":%u,\"pull\":%u,\"testable\":%s,\"description\":\"%s\"}",
+			                  first ? "" : ",", xf16cam_gpio_port_name((GPIO_Port)port), pin,
+			                  (unsigned int)config.mode, level == GPIO_PIN_HIGH ? "HIGH" : "LOW",
+			                  (unsigned int)config.driving, (unsigned int)config.pull,
+			                  xf16cam_gpio_testable((GPIO_Port)port, (GPIO_Pin)pin) ? "true" : "false",
+			                  xf16cam_gpio_description((GPIO_Port)port, pin));
+			if (length > 0 && (size_t)length < sizeof(row))
+				xf16cam_http_send_all(fd, row, (size_t)length);
+			first = 0;
+		}
+	}
+	xf16cam_http_send_text(fd, "]}");
+}
+
+static void xf16cam_http_gpio_control(int fd, const char *body)
+{
+	char port_text[8];
+	char pin_text[8];
+	char action[16];
+	char *end;
+	unsigned long pin_number;
+	GPIO_Port port;
+	GPIO_Pin pin;
+	XF16CamGPIOSnapshot *snapshot;
+	GPIO_InitParam output = {
+		.mode = GPIOx_Pn_F1_OUTPUT,
+		.driving = GPIO_DRIVING_LEVEL_0,
+		.pull = GPIO_PULL_NONE,
+	};
+
+	if (xf16cam_form_value(body, "action", action, sizeof(action)) != 0) {
+		xf16cam_http_message(fd, "400 Bad Request", "Missing GPIO action.");
+		return;
+	}
+	if (strcmp(action, "restore_all") == 0) {
+		xf16cam_gpio_restore_all();
+		xf16cam_http_message(fd, "200 OK", "All tested GPIO pins restored.");
+		return;
+	}
+	if (xf16cam_form_value(body, "port", port_text, sizeof(port_text)) != 0 ||
+	    xf16cam_form_value(body, "pin", pin_text, sizeof(pin_text)) != 0 ||
+	    pin_text[0] == '\0') {
+		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO address.");
+		return;
+	}
+	if (port_text[0] == 'A' || port_text[0] == 'a')
+		port = GPIO_PORT_A;
+	else if (port_text[0] == 'B' || port_text[0] == 'b')
+		port = GPIO_PORT_B;
+#if (__CONFIG_CHIP_ARCH_VER == 2)
+	else if (port_text[0] == 'C' || port_text[0] == 'c')
+		port = GPIO_PORT_C;
+#endif
+	else {
+		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO port.");
+		return;
+	}
+	pin_number = strtoul(pin_text, &end, 10);
+	if (end == pin_text || *end != '\0' ||
+	    pin_number >= xf16cam_gpio_pin_count(port)) {
+		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO pin.");
+		return;
+	}
+	pin = (GPIO_Pin)pin_number;
+	if (!xf16cam_gpio_testable(port, pin)) {
+		xf16cam_http_message(fd, "403 Forbidden", "This pin is reserved by the current board map and is locked.");
+		return;
+	}
+	if (strcmp(action, "restore") == 0) {
+		xf16cam_gpio_restore_pin(port, pin);
+		xf16cam_http_message(fd, "200 OK", "GPIO pin restored.");
+		return;
+	}
+	if (strcmp(action, "low") != 0 && strcmp(action, "high") != 0) {
+		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO action.");
+		return;
+	}
+	snapshot = &g_gpio_snapshots[port][pin];
+	if (!snapshot->valid) {
+		HAL_GPIO_GetConfig(port, pin, &snapshot->config);
+		snapshot->state = HAL_GPIO_ReadPin(port, pin);
+		snapshot->valid = 1;
+	}
+	HAL_GPIO_WritePin(port, pin, GPIO_PIN_LOW);
+	HAL_GPIO_Init(port, pin, &output);
+	HAL_GPIO_WritePin(port, pin, strcmp(action, "high") == 0 ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
+	xf16cam_http_message(fd, "200 OK", "GPIO output applied. Use Restore when finished.");
 }
 
 __xip_text
