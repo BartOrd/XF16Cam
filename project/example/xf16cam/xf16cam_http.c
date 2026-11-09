@@ -394,25 +394,26 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<div id=light class=panel><section class='card wide'><h2>Light</h2>"
 	                  "<div class=grid><b>Light</b><span>");
+	xf16cam_http_send_text(fd, "<span id=lightStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_ENABLED(config) ? "Enabled (PB20 HIGH)" : "Disabled (PB20 LOW)");
-	XF16CAM_HTTP_SEND_LITERAL(fd, "</span><b>Light intensity</b><span>");
+	XF16CAM_HTTP_SEND_LITERAL(fd, "</span></span><b>Light intensity</b><span><span id=intensityStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_STRONGER(config) ? "Stronger (PB3 OUTPUT LOW)" : "Weaker (PB3 INPUT)");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
-	                  "</span></div><form method=post action=/api/light>"
+	                  "</span></span></div><form onsubmit='return setLight(this)'>"
 	                  "<button name=light value=disabled");
 	if (!XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button name=light value=enabled");
 	if (XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light>"
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form onsubmit='return setLight(this)'>"
 	                  "<button name=intensity value=weaker");
 	if (!XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button name=intensity value=stronger");
 	if (XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form></section></div>");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form><span id=lightResult aria-live=polite></span></section></div>");
 
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<div id=network class=panel><section class='card wide'><h2>Wi-Fi setup</h2>"
@@ -508,7 +509,17 @@ static void xf16cam_http_page(int fd)
 	                  "function videoStart(){let v=$('#video');if(!v||vh||D.hidden)return;clearTimeout(vt);v.src='/stream.mjpeg'}"
 	                  "function videoRetry(){clearTimeout(vt);if(!vh&&!D.hidden)vt=setTimeout(videoStart,1500)}"
 	                  "function tab(id){A('.panel').forEach(e=>e.classList.toggle('on',e.id==id));"
-	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)})}"
+	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)});"
+	                  "if(id==='live'){vh=0;videoStart()}else videoStop(1)}"
+	                  "async function setLight(f){let b=f.querySelector('button:not([disabled])'),s=$('#lightResult');"
+	                  "if(!b||b.disabled)return false;b.disabled=true;s.textContent='Saving...';"
+	                  "let d=new FormData(f),k=d.has('light')?'light':'intensity',v=d.get(k);"
+	                  "try{let r=await fetch('/api/light',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+	                  "body:new URLSearchParams(d)});if(!r.ok)throw 0;"
+	                  "if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
+	                  "else $('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';"
+	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'}"
+	                  "catch(e){s.textContent='Save failed'}finally{b.disabled=false}return false}"
 	                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
@@ -925,7 +936,6 @@ static int xf16cam_http_handle(int fd)
 		return XF16CAM_HTTP_COLD_REBOOT;
 
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/light") == 0) {
-		XF16CamMediaMode media_before = xf16cam_config_get()->media_mode;
 		uint8_t enabled = XF16CAM_LIGHT_ENABLED(xf16cam_config_get()) ? 1U : 0U;
 		uint8_t stronger = XF16CAM_LIGHT_STRONGER(xf16cam_config_get()) ? 1U : 0U;
 		int valid = 0;
@@ -956,12 +966,7 @@ static int xf16cam_http_handle(int fd)
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
 		xf16cam_light_apply();
-		printf("xf16cam light: %s, intensity=%s, media before=%s after=%s\n",
-		       enabled ? "enabled" : "disabled",
-		       stronger ? "stronger" : "weaker",
-		       media_before == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP",
-		       xf16cam_config_get()->media_mode == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
-		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
+		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		XF16CamMediaMode media_mode;
 
