@@ -85,6 +85,7 @@ static void xf16cam_board_task(void *arg)
 	unsigned int reset_held_ms = 0;
 	unsigned int blink_ms = 0;
 	int mode_armed = 0;
+	int mode_press_accepted = 0;
 	int reset_armed = 0;
 	int reset_handled = 0;
 	int buttons_initialized = 0;
@@ -129,6 +130,7 @@ static void xf16cam_board_task(void *arg)
 			reset_button.stable = reset_pressed;
 			reset_button.candidate_ms = 0;
 			mode_armed = !mode_pressed;
+			mode_press_accepted = 0;
 			reset_armed = !reset_pressed;
 			reset_held_ms = 0;
 			reset_handled = 0;
@@ -138,20 +140,25 @@ static void xf16cam_board_task(void *arg)
 			int reset_changed = xf16cam_button_update(&reset_button, reset_pressed);
 
 			if (mode_changed) {
-				if (!mode_button.stable) {
+				if (mode_button.stable) {
+					mode_press_accepted = mode_armed;
+					if (mode_press_accepted)
+						mode_armed = 0;
+				} else {
 					mode_armed = 1;
-				} else if (mode_armed) {
-					XF16CamMediaMode next =
-						xf16cam_config_get()->media_mode == XF16CAM_MEDIA_WEB ?
-						XF16CAM_MEDIA_RTSP : XF16CAM_MEDIA_WEB;
+					if (mode_press_accepted) {
+						XF16CamMediaMode next =
+							xf16cam_config_get()->media_mode == XF16CAM_MEDIA_WEB ?
+							XF16CAM_MEDIA_RTSP : XF16CAM_MEDIA_WEB;
 
-					mode_armed = 0;
-					printf("xf16cam PA15: stable press, switching media mode to %s\n",
-					       next == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
-					if (xf16cam_config_save_media_and_begin_update(next) == 0)
-						xf16cam_board_reboot_now();
-					else
-						printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\n");
+						mode_press_accepted = 0;
+						printf("xf16cam PA15: stable press released, switching media mode to %s\\n",
+						       next == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
+						if (xf16cam_config_save_media_and_begin_update(next) == 0)
+							xf16cam_board_reboot_now();
+						else
+							printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\\n");
+					}
 				}
 			}
 
