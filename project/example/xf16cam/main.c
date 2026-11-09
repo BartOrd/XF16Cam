@@ -469,7 +469,7 @@ static int xf16cam_capture_jpeg(CAMERA_JpegBuffInfo *info, uint8_t **jpeg,
 		++g_media_info.capture_errors;
 		return -1;
 	}
-	if (info->buff_index >= JPEG_BUFFER_COUNT || info->size == 0 ||
+	if (info->buff_index >= g_jpeg_buffer_count || info->size == 0 ||
 	    info->size > mem_mgmt.jpeg_buf[info->buff_index].size) {
 		++g_media_info.capture_errors;
 		printf("xf16cam invalid capture metadata: index=%u len=%lu\n",
