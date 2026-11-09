@@ -121,19 +121,10 @@ int xf16cam_config_init(void)
 			printf("xf16cam config: migrated schema %u to 3\n", old_schema);
 	}
 
-	if (config->media_mode != XF16CAM_MEDIA_RTSP) {
-		config->media_mode = XF16CAM_MEDIA_RTSP;
-		config->checksum = xf16cam_config_checksum(config);
-		if (fdcm_write(g_config_store, config, sizeof(*config)) != sizeof(*config))
-			printf("xf16cam config: RTSP-only migration could not be persisted\n");
-		else
-			printf("xf16cam config: removed legacy browser mode; RTSP selected\n");
-	}
-
 	printf("xf16cam config: loaded schema=%u wifi=%s media=%s resolution=%s ssid=%s\n",
 	       config->schema,
 	       config->wifi_mode == XF16CAM_WIFI_STA ? "STA" : "AP",
-	       "RTSP",
+	       config->media_mode == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP",
 	       config->resolution == XF16CAM_RESOLUTION_VGA ? "VGA" : "QVGA",
 	       config->ssid);
 	return 0;
@@ -207,6 +198,47 @@ int xf16cam_config_save_ap(void)
 	memset(config.ssid, 0, sizeof(config.ssid));
 	memset(config.psk, 0, sizeof(config.psk));
 	result = xf16cam_config_write(&config);
+	OS_MutexUnlock(&g_config_lock);
+	return result;
+}
+
+int xf16cam_config_save_media(XF16CamMediaMode mode)
+{
+	XF16CamConfig config;
+	int result;
+
+	if (mode != XF16CAM_MEDIA_RTSP && mode != XF16CAM_MEDIA_WEB)
+		return -1;
+	if (!g_config_lock_ready || OS_MutexLock(&g_config_lock, OS_WAIT_FOREVER) != OS_OK)
+		return -1;
+	if (g_update_active) {
+		OS_MutexUnlock(&g_config_lock);
+		return -1;
+	}
+	config = *xf16cam_config_get();
+	config.media_mode = mode;
+	result = xf16cam_config_write(&config);
+	OS_MutexUnlock(&g_config_lock);
+	return result;
+}
+
+int xf16cam_config_save_media_and_begin_update(XF16CamMediaMode mode)
+{
+	XF16CamConfig config;
+	int result = -1;
+
+	if (mode != XF16CAM_MEDIA_RTSP && mode != XF16CAM_MEDIA_WEB)
+		return -1;
+	if (!g_config_lock_ready || OS_MutexLock(&g_config_lock, OS_WAIT_FOREVER) != OS_OK)
+		return -1;
+	if (!g_update_active) {
+		config = *xf16cam_config_get();
+		config.media_mode = mode;
+		if (xf16cam_config_write(&config) == 0) {
+			g_update_active = 1;
+			result = 0;
+		}
+	}
 	OS_MutexUnlock(&g_config_lock);
 	return result;
 }
