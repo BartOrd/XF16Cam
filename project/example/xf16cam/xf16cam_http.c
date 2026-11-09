@@ -1090,6 +1090,8 @@ static int xf16cam_http_handle(int fd)
 
 	if (strcmp(method, "GET") == 0 && strcmp(path, "/") == 0) {
 		xf16cam_http_page(fd);
+	} else if (strcmp(method, "GET") == 0 && strcmp(path, "/api/gpio") == 0) {
+		xf16cam_http_gpio_json(fd);
 	} else if (strcmp(method, "GET") == 0 && strcmp(path, "/stream.mjpeg") == 0) {
 		if (!xf16cam_sensor_available())
 			xf16cam_http_message(fd, "503 Service Unavailable", "No supported camera sensor is available.");
@@ -1185,6 +1187,8 @@ static int xf16cam_http_handle(int fd)
 		}
 		xf16cam_light_apply();
 		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
+	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/gpio") == 0) {
+		xf16cam_http_gpio_control(fd, body);
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		XF16CamMediaMode media_mode;
 
