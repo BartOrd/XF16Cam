@@ -4,7 +4,7 @@
 [Flashing guide](../../../docs/flashing.md)
 
 This standalone application turns the XF16/XR872ET-family camera JPEG path into
-a single-client RTSP stream without PSRAM.
+browser MJPEG or a single-client RTSP stream without PSRAM.
 
 - First boot starts the open setup AP `XF16CAM` at `192.168.4.1`.
 - The setup AP is intentionally unauthenticated; anyone in radio range can
@@ -15,8 +15,8 @@ a single-client RTSP stream without PSRAM.
 - OTA has been validated end-to-end on XR872 hardware, including retained Wi-Fi
   settings, camera reprobe, audio restart, and management-page recovery.
 - Saved settings use a dedicated FDCM sector and survive firmware reflashing.
-- Schema-1 settings migrate in place; legacy browser mode is normalized to RTSP.
-  Resolution starts conservatively at QVGA because its old reserved byte was undefined.
+- Schema-1 settings migrate in place with network and media choices preserved;
+  resolution starts conservatively at QVGA because its old reserved byte was undefined.
 - Leaving the password blank for the currently saved secured SSID preserves
   that credential; a blank password for a different SSID selects an open network.
 - A failed STA connection falls back to the open setup AP.
@@ -25,19 +25,21 @@ a single-client RTSP stream without PSRAM.
 - The serial `upgrade` command is an unconditional last-resort BootROM handoff;
   it remains available even if media, storage, or configuration state is stuck.
 - Stream: `rtsp://<device-ip>:8554/stream`
-- The responsive web console has Live, Network, Storage, and System tabs; the
-  Live page exposes the RTSP URL and camera diagnostics.
-- RTSP uses continuous JPEG capture with rotating buffers when memory permits;
-  allocation falls back from three buffers to two or one, with single-frame
-  capture retained as the low-memory fallback.
+- The responsive web console has Live, Network, Storage, and System tabs, with
+  a focal embedded MJPEG view that can switch exclusively with RTSP mode.
+- Browser MJPEG and RTSP use continuous JPEG capture with rotating buffers when
+  memory permits; allocation falls back from three buffers to two or one, with
+  single-frame capture retained as the low-memory fallback.
 - Device information reports flash identity, the known XF16 pin map, uptime,
   SDK-cached boot cause, and XF16 chip temperature.
 - Runtime diagnostics retain the minimum spare stack values for the HTTP,
   audio, and board workers.
 - Demand-started AMIC capture publishes PCMU silence during its 2.1-second
   analogue settling period, preserving the media clock before live samples.
-- PA15 is unused; PA20 held for three seconds restores the open setup AP.
-  PA21 blinks during startup and stays on when services are ready.
+- Browser MJPEG reconnects after a transient failure, and transmit-only MJPEG
+  and PCMU workers detect a closed browser without waiting for TCP retries.
+- PA15 short-press switches Web/RTSP mode; PA20 held for three seconds restores
+  the open setup AP. PA21 blinks during startup and stays on when services are ready.
 - An optional one-bit SD card can be mounted, inspected, and safely ejected from
   the web page. Camera and storage share the PA23 rail through reference-counted
   ownership; the page reports total/free space and can explicitly format FAT32.
@@ -122,7 +124,7 @@ for serial recovery and reflashing.
 ## Confirmed XF16 hardware
 
 - Camera CSI: PA0-PA11; camera control: PA14; camera power rail: PA23
-- Factory status LED: PA21; unused button: PA15; setup/reset button: PA20
+- Factory status LED: PA21; mode button: PA15; setup/reset button: PA20
 - Microphone: XR872 internal codec analog microphone (AMIC) input, not a GPIO
 - SD card: PB16 CMD, PB17 D0, PB18 CLK
 - Console: PB0 TX, PB1 RX; SPI flash: PB2-PB7
