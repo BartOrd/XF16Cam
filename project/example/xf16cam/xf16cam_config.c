@@ -100,7 +100,8 @@ int xf16cam_config_init(void)
 	    !xf16cam_config_storage_valid(config) ||
 	    (config->schema != XF16CAM_CONFIG_SCHEMA_LEGACY &&
 	     config->schema != 2U && config->schema != XF16CAM_CONFIG_SCHEMA) ||
-	    config->resolution > XF16CAM_RESOLUTION_VGA) {
+	    (config->schema != XF16CAM_CONFIG_SCHEMA_LEGACY &&
+	     config->resolution > XF16CAM_RESOLUTION_VGA)) {
 		xf16cam_config_defaults(config);
 		printf("xf16cam config: using defaults (AP mode)\n");
 		return 0;
