@@ -63,7 +63,7 @@ static int xf16cam_button_update(XF16CamButtonState *state, int pressed)
 static void xf16cam_board_reboot_now(void)
 {
 	if (xf16cam_storage_unmount() != 0)
-		printf("xf16cam board: SD eject failed before reboot\\n");
+		printf("xf16cam board: SD eject failed before reboot\n");
 	OS_MSleep(250);
 	HAL_PRCM_SetCPUABootFlag(PRCM_CPUA_BOOT_FROM_COLD_RESET);
 	HAL_WDG_Reboot();
@@ -72,7 +72,7 @@ static void xf16cam_board_reboot_now(void)
 static void xf16cam_board_reboot(void)
 {
 	if (xf16cam_update_begin() != 0) {
-		printf("xf16cam reboot deferred: firmware update is active\\n");
+		printf("xf16cam reboot deferred: firmware update is active\n");
 		return;
 	}
 	xf16cam_board_reboot_now();
@@ -146,12 +146,12 @@ static void xf16cam_board_task(void *arg)
 						XF16CAM_MEDIA_RTSP : XF16CAM_MEDIA_WEB;
 
 					mode_armed = 0;
-					printf("xf16cam PA15: stable press, switching media mode to %s\\n",
+					printf("xf16cam PA15: stable press, switching media mode to %s\n",
 					       next == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
 					if (xf16cam_config_save_media_and_begin_update(next) == 0)
 						xf16cam_board_reboot_now();
 					else
-						printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\\n");
+						printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\n");
 				}
 			}
 
@@ -165,7 +165,7 @@ static void xf16cam_board_task(void *arg)
 				if (!reset_handled && reset_held_ms >= XF16CAM_RESET_HOLD_MS) {
 					reset_handled = 1;
 					reset_armed = 0;
-					printf("xf16cam PA20: restoring setup AP\\n");
+					printf("xf16cam PA20: restoring setup AP\n");
 					if (xf16cam_config_save_ap() == 0)
 						xf16cam_board_reboot();
 				}
