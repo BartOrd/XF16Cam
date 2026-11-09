@@ -508,7 +508,14 @@ static void xf16cam_http_page(int fd)
 	                  "<small>Approximate; no auto cutoff.</small></section>");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<section class='card wide'><h2>Firmware update</h2><p>Choose an OTA image and keep power connected.</p>"
-	                  "<input id=ota type=file accept=.img><button id=otaInstall class=primary type=button onclick=update()>Install update</button> <span id=up aria-live=polite></span></section></div>"
+	                  "<input id=ota type=file accept=.img><button id=otaInstall class=primary type=button onclick=update()>Install update</button> <span id=up aria-live=polite></span></section></div>");
+	XF16CAM_HTTP_SEND_LITERAL(fd,
+	                  "<div id=gpio class=panel><section class='card wide'><h2>GPIO diagnostics</h2>"
+	                  "<p>All pins are listed. LOW/HIGH tests are enabled only for pins not assigned to critical board functions. Restore pins after each experiment.</p>"
+	                  "<button type=button onclick=gpioLoad()>Refresh</button> "
+	                  "<button type=button onclick=\"if(confirm('Restore all tested pins?'))gpioAction('A',0,'restore_all')\">Restore all test pins</button> "
+	                  "<span id=gpioStatus aria-live=polite></span><div id=gpioPins class=gpioGroups></div></section></div>");
+	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<script>let D=document,$=s=>D.querySelector(s),A=s=>D.querySelectorAll(s),vt,vh=0;"
 	                  "function videoStop(h){if(h)vh=1;clearTimeout(vt);let v=$('#video');if(v)v.removeAttribute('src')}"
 	                  "function videoStart(){let v=$('#video');if(!v||vh||D.hidden)return;clearTimeout(vt);v.src='/stream.mjpeg'}"
