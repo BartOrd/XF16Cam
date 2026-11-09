@@ -925,6 +925,7 @@ static int xf16cam_http_handle(int fd)
 		return XF16CAM_HTTP_COLD_REBOOT;
 
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/light") == 0) {
+		XF16CamMediaMode media_before = xf16cam_config_get()->media_mode;
 		uint8_t enabled = XF16CAM_LIGHT_ENABLED(xf16cam_config_get()) ? 1U : 0U;
 		uint8_t stronger = XF16CAM_LIGHT_STRONGER(xf16cam_config_get()) ? 1U : 0U;
 		int valid = 0;
@@ -955,6 +956,11 @@ static int xf16cam_http_handle(int fd)
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
 		xf16cam_light_apply();
+		printf("xf16cam light: %s, intensity=%s, media before=%s after=%s\n",
+		       enabled ? "enabled" : "disabled",
+		       stronger ? "stronger" : "weaker",
+		       media_before == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP",
+		       xf16cam_config_get()->media_mode == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
 		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		XF16CamMediaMode media_mode;
