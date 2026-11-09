@@ -140,7 +140,7 @@ static int xf16cam_gpio_apply(int port, int pin, const char *action)
 			HAL_PWM_ChDeinit(PWM_GROUP1_CH2);
 			g_gpio_pa21_pwm_active = 0;
 		}
-		xf16cam_board_gpio_test(strcmp(action, "disable") == 0 ? 0 : 1);
+		xf16cam_board_gpio_test(1);
 	}
 	if (strcmp(action, "input") == 0) {
 		config.mode = GPIOx_Pn_F0_INPUT;
@@ -751,7 +751,7 @@ static void xf16cam_http_page(int fd)
 	                  "function tab(id){A('.panel').forEach(e=>e.classList.toggle('on',e.id==id));"
 	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)})}"
 	                  	                  "function gpioStatus(t){let e=$('#gpioStatus');if(e)e.textContent=t}"
-	                  "function gpioFilter(){let q=$('#gpioSearch').value.toLowerCase(),n=0;A('.gpio-row').forEach(r=>{let ok=r.dataset.search.toLowerCase().includes(q);r.classList.toggle('gpio-hidden',!ok);if(ok)n++});$('#gpioCount').textContent=n+' matching pins'}"
+	                  "function gpioFilter(){let q=$('#gpioSearch').value.toLowerCase(),n=0;A('.gpio-row').forEach(r=>{let ok=r.dataset.search.toLowerCase().includes(q);r.classList.toggle('gpio-hidden',!ok);if(ok)n++});A('.gpio-port').forEach(d=>{d.hidden=!A('.gpio-row:not(.gpio-hidden)',d).length});$('#gpioCount').textContent=n+' matching pins'}"
 	                  "function gpioSelected(){return [...A('.gpio-check:checked')].map(e=>e.value)}"
 	                  "function gpioSelectAll(c){A('.gpio-row:not(.gpio-hidden) .gpio-check').forEach(e=>e.checked=c.checked)}"
 	                  "function gpioSelectGroup(c){A('.gpio-check',c.closest('details')).forEach(e=>e.checked=c.checked)}"
