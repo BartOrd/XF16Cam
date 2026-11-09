@@ -102,7 +102,7 @@ and recovery sequence.
 
 | Part | Behaviour |
 | --- | --- |
-| PA15 button | A debounced press and release toggles Browser MJPEG/RTSP, persists the mode, and reboots. |
+| PA15 button | Hold for at least 1.5 seconds, then release to toggle Browser MJPEG/RTSP, persist the mode, and reboot. |
 | PA20 button | Holding for 3 seconds restores the open setup AP and reboots. A falling edge is configured to wake the MCU from manual hibernation. |
 | PA21 LED | Blinks at startup, stays on once services are ready, and turns off before hibernation. It is usually the blue LED on the tested A9. |
 | Red LED | XF16Cam never drives it. Its connection and possible charging indication are not yet characterised. |
