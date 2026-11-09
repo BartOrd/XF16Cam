@@ -222,6 +222,27 @@ int xf16cam_config_save_media(XF16CamMediaMode mode)
 	return result;
 }
 
+int xf16cam_config_save_media_and_begin_update(XF16CamMediaMode mode)
+{
+	XF16CamConfig config;
+	int result = -1;
+
+	if (mode != XF16CAM_MEDIA_RTSP && mode != XF16CAM_MEDIA_WEB)
+		return -1;
+	if (!g_config_lock_ready || OS_MutexLock(&g_config_lock, OS_WAIT_FOREVER) != OS_OK)
+		return -1;
+	if (!g_update_active) {
+		config = *xf16cam_config_get();
+		config.media_mode = mode;
+		if (xf16cam_config_write(&config) == 0) {
+			g_update_active = 1;
+			result = 0;
+		}
+	}
+	OS_MutexUnlock(&g_config_lock);
+	return result;
+}
+
 int xf16cam_config_save_resolution(XF16CamResolution resolution)
 {
 	XF16CamConfig config;
