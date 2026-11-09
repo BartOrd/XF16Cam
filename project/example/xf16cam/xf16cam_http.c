@@ -811,7 +811,7 @@ static int xf16cam_http_handle(int fd)
 	uint32_t request_start = OS_TicksToMSecs(OS_GetTicks());
 	char ssid[XF16CAM_SSID_MAX_LEN + 1];
 	char psk[XF16CAM_PSK_MAX_LEN + 1];
-	char mode[8];
+	char mode[16];
 
 	memset(g_request, 0, sizeof(g_request));
 	header_end = NULL;
