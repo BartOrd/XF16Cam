@@ -398,18 +398,18 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd, "</span></span><b>Light intensity</b><span><span id=intensityStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_STRONGER(config) ? "Stronger (PB3 OUTPUT LOW)" : "Weaker (PB3 INPUT)");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
-	                  "</span></span></div><form method=post action=/api/light onsubmit='return lightSubmit(event)'>"
-	                  "<button name=light value=disabled");
+	                  "</span></span></div><form method=post action=/api/light>"
+	                  "<button type=submit onclick='lightSubmit(this);return false' name=light value=disabled");
 	if (!XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button name=light value=enabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button type=submit onclick='lightSubmit(this);return false' name=light value=enabled");
 	if (XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light onsubmit='return lightSubmit(event)'>"
-	                  "<button name=intensity value=weaker");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light>"
+	                  "<button type=submit onclick='lightSubmit(this);return false' name=intensity value=weaker");
 	if (!XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button name=intensity value=stronger");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button type=submit onclick='lightSubmit(this);return false' name=intensity value=stronger");
 	if (XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form><span id=lightResult aria-live=polite></span></section></div>");
@@ -509,14 +509,15 @@ static void xf16cam_http_page(int fd)
 	                  "function videoRetry(){clearTimeout(vt);if(!vh&&!D.hidden)vt=setTimeout(videoStart,1500)}"
 	                  "function tab(id){A('.panel').forEach(e=>e.classList.toggle('on',e.id==id));"
 	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)})}"
-	                  "async function lightSubmit(e){e.preventDefault();let f=e.target,b=e.submitter,s=$('#lightResult');"
-	                  "if(!b||b.disabled)return false;let k=b.name,v=b.value;b.disabled=true;s.textContent='Saving...';"
-	                  "try{let r=await fetch(f.action,{method:'POST',body:new URLSearchParams([[k,v]])});"
-	                  "if(!r.ok)throw 0;await r.text();"
-	                  "if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
+	                  "function lightSubmit(b){let f=b.form,s=$('#lightResult'),k=b.name,v=b.value;"
+	                  "if(!f||b.disabled)return false;b.disabled=true;s.textContent='Saving...';"
+	                  "fetch(f.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+	                  "body:encodeURIComponent(k)+'='+encodeURIComponent(v)})"
+	                  ".then(r=>{if(!r.ok)throw 0;return r.text()})"
+	                  ".then(()=>{if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
 	                  "else $('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';"
-	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'}"
-	                  "catch(e){s.textContent='Save failed';b.disabled=false}return false}"
+	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'})"
+	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
 	                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
