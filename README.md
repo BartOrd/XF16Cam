@@ -158,3 +158,6 @@ per-sensor resolution support.
 
 The teardown photographs above were made by `divadiow` during the original
 XF16 investigation. See the [image provenance notes](docs/images/README.md).
+
+
+Continuous capture uses a dedicated JPEG send-copy buffer when memory permits. This prevents the camera's rotating DMA buffers from being reused while a slow TCP client is still receiving a frame.

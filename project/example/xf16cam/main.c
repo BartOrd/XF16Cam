@@ -39,6 +39,7 @@
 #define JPEG_BUFFER_COUNT_MAX    (3)
 #define JPEG_MPART_EN            (0)
 #define JPEG_BUFF_SIZE           (100 * 1024)
+#define JPEG_SEND_BUFFER_SIZE    (JPEG_BUFF_SIZE + CAMERA_JPEG_HEADER_LEN)
 #define JPEG_BUFFER_ARENA_SIZE(count) \
 	((count) * (JPEG_BUFF_SIZE + CAMERA_JPEG_HEADER_LEN + 1023U))
 #define JPEG_IMAGE_WIDTH         (320)
@@ -70,6 +71,7 @@ static int xf16_board_camera_power_prepare(void);
 static void xf16_board_camera_power_down(void);
 
 static uint8_t *gmemaddr;
+static uint8_t *g_jpeg_send_buffer;
 static uint8_t g_jpeg_buffer_count;
 static int g_video_capture_active;
 static CAMERA_Mgmt mem_mgmt;
@@ -155,13 +157,22 @@ static int camera_mem_create(CAMERA_JpegCfg *jpeg_cfg, CAMERA_Mgmt *mgmt)
 	uint32_t arena_size = 0;
 	uint32_t count;
 	uint32_t i;
+	int copy_buffer = 0;
 	(void)jpeg_cfg;
 
-	for (count = JPEG_BUFFER_COUNT_MAX; count > 0; --count) {
+	g_jpeg_send_buffer = NULL;
+	for (count = JPEG_BUFFER_COUNT_MAX; count > 1; --count) {
+		arena_size = JPEG_BUFFER_ARENA_SIZE(count) + JPEG_SEND_BUFFER_SIZE + 1023U;
+		addr = (uint8_t *)malloc(arena_size);
+		if (addr != NULL) {
+			copy_buffer = 1;
+			break;
+		}
+	}
+	if (addr == NULL) {
+		count = 1;
 		arena_size = JPEG_BUFFER_ARENA_SIZE(count);
 		addr = (uint8_t *)malloc(arena_size);
-		if (addr != NULL)
-			break;
 	}
 	if (addr == NULL) {
 		printf("jpeg capture arena allocation failed\n");
@@ -185,20 +196,30 @@ static int camera_mem_create(CAMERA_JpegCfg *jpeg_cfg, CAMERA_Mgmt *mgmt)
 			return -1;
 		}
 	}
+	if (copy_buffer) {
+		g_jpeg_send_buffer = (uint8_t *)ALIGN_16B((uint32_t)cursor);
+		if (g_jpeg_send_buffer + JPEG_SEND_BUFFER_SIZE > end_addr) {
+			printf("jpeg send buffer exceeds capture arena\n");
+			free(addr);
+			g_jpeg_send_buffer = NULL;
+			return -1;
+		}
+	}
 	g_jpeg_buffer_count = (uint8_t)count;
-	printf("xf16cam buffers: count=%u bytes_each=%u arena=%lu\n",
+	printf("xf16cam buffers: count=%u bytes_each=%u send_copy=%s arena=%lu\n",
 	       (unsigned int)g_jpeg_buffer_count, JPEG_BUFF_SIZE,
+	       g_jpeg_send_buffer != NULL ? "yes" : "no",
 	       (unsigned long)arena_size);
 
 	gmemaddr = addr;
 	return 0;
 }
-
 __xip_text
 static void camera_mem_destroy(void)
 {
 	g_video_capture_active = 0;
 	g_jpeg_buffer_count = 0;
+	g_jpeg_send_buffer = NULL;
 	if (gmemaddr) {
 		free(gmemaddr);
 		gmemaddr = NULL;
@@ -478,6 +499,10 @@ static int xf16cam_capture_jpeg(CAMERA_JpegBuffInfo *info, uint8_t **jpeg,
 	}
 	*jpeg = mem_mgmt.jpeg_buf[info->buff_index].addr - CAMERA_JPEG_HEADER_LEN;
 	*jpeg_len = info->size + CAMERA_JPEG_HEADER_LEN;
+	if (g_jpeg_send_buffer != NULL) {
+		memcpy(g_jpeg_send_buffer, *jpeg, *jpeg_len);
+		*jpeg = g_jpeg_send_buffer;
+	}
 	++g_media_info.frames;
 	if (info->size > g_media_info.largest_jpeg)
 		g_media_info.largest_jpeg = info->size;
