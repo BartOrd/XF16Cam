@@ -10,6 +10,7 @@
 #include "xf16cam_storage.h"
 
 #define XF16CAM_LED_PIN              GPIO_PIN_21
+#define XF16CAM_MODE_BUTTON_PIN      GPIO_PIN_15
 #define XF16CAM_RESET_BUTTON_PIN     GPIO_PIN_20
 #define XF16CAM_BUTTON_POLL_MS       (50)
 #define XF16CAM_BUTTON_DEBOUNCE_MS   (300)
@@ -23,6 +24,11 @@ static volatile int g_board_sleeping;
 static int xf16cam_button_pressed(GPIO_Pin pin)
 {
 	return HAL_GPIO_ReadPin(GPIO_PORT_A, pin) == GPIO_PIN_LOW;
+}
+
+int xf16cam_board_mode_button_pressed(void)
+{
+	return xf16cam_button_pressed(XF16CAM_MODE_BUTTON_PIN);
 }
 
 int xf16cam_board_reset_button_pressed(void)
@@ -74,16 +80,20 @@ static void xf16cam_board_reboot(void)
 
 static void xf16cam_board_task(void *arg)
 {
+	XF16CamButtonState mode_button = {0};
 	XF16CamButtonState reset_button = {0};
 	unsigned int reset_held_ms = 0;
 	unsigned int blink_ms = 0;
+	int mode_armed = 0;
+	int mode_press_accepted = 0;
 	int reset_armed = 0;
 	int reset_handled = 0;
-	int button_initialized = 0;
+	int buttons_initialized = 0;
 	int led = 0;
 
 	(void)arg;
 	while (1) {
+		int mode_pressed = xf16cam_board_mode_button_pressed();
 		int reset_pressed = xf16cam_board_reset_button_pressed();
 
 		if (g_board_sleeping) {
@@ -91,7 +101,7 @@ static void xf16cam_board_task(void *arg)
 				led = 0;
 				HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN, GPIO_PIN_LOW);
 			}
-			button_initialized = 0;
+			buttons_initialized = 0;
 			OS_MSleep(XF16CAM_BUTTON_POLL_MS);
 			continue;
 		}
@@ -103,7 +113,7 @@ static void xf16cam_board_task(void *arg)
 				HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN,
 				                  led ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
 			}
-			button_initialized = 0;
+			buttons_initialized = 0;
 			OS_MSleep(XF16CAM_BUTTON_POLL_MS);
 			continue;
 		}
@@ -112,16 +122,45 @@ static void xf16cam_board_task(void *arg)
 			HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN, GPIO_PIN_HIGH);
 		}
 
-		if (!button_initialized) {
+		if (!buttons_initialized) {
+			mode_button.candidate = mode_pressed;
+			mode_button.stable = mode_pressed;
+			mode_button.candidate_ms = 0;
 			reset_button.candidate = reset_pressed;
 			reset_button.stable = reset_pressed;
 			reset_button.candidate_ms = 0;
+			mode_armed = !mode_pressed;
+			mode_press_accepted = 0;
 			reset_armed = !reset_pressed;
 			reset_held_ms = 0;
 			reset_handled = 0;
-			button_initialized = 1;
+			buttons_initialized = 1;
 		} else {
+			int mode_changed = xf16cam_button_update(&mode_button, mode_pressed);
 			int reset_changed = xf16cam_button_update(&reset_button, reset_pressed);
+
+			if (mode_changed) {
+				if (mode_button.stable) {
+					mode_press_accepted = mode_armed;
+					if (mode_press_accepted)
+						mode_armed = 0;
+				} else {
+					mode_armed = 1;
+					if (mode_press_accepted) {
+						XF16CamMediaMode next =
+							xf16cam_config_get()->media_mode == XF16CAM_MEDIA_WEB ?
+							XF16CAM_MEDIA_RTSP : XF16CAM_MEDIA_WEB;
+
+						mode_press_accepted = 0;
+						printf("xf16cam PA15: stable press released, switching media mode to %s\n",
+						       next == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
+						if (xf16cam_config_save_media_and_begin_update(next) == 0)
+							xf16cam_board_reboot_now();
+						else
+							printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\n");
+					}
+				}
+			}
 
 			if (reset_changed && !reset_button.stable) {
 				reset_armed = 1;
@@ -157,10 +196,12 @@ int xf16cam_board_init(void)
 		.pull = GPIO_PULL_NONE,
 	};
 
+	HAL_GPIO_Init(GPIO_PORT_A, XF16CAM_MODE_BUTTON_PIN, &input);
 	HAL_GPIO_Init(GPIO_PORT_A, XF16CAM_RESET_BUTTON_PIN, &input);
 	HAL_GPIO_Init(GPIO_PORT_A, XF16CAM_LED_PIN, &output);
 	HAL_GPIO_WritePin(GPIO_PORT_A, XF16CAM_LED_PIN, GPIO_PIN_LOW);
-	printf("xf16cam board: PA20 reset=%s PA21 status LED\n",
+	printf("xf16cam board: PA15 mode=%s PA20 reset=%s PA21 status LED\n",
+	       xf16cam_board_mode_button_pressed() ? "pressed" : "released",
 	       xf16cam_board_reset_button_pressed() ? "pressed" : "released");
 
 	if (OS_ThreadCreate(&g_board_thread, "xf16cam-board", xf16cam_board_task,
