@@ -121,10 +121,13 @@ static int xf16cam_gpio_apply(int port, int pin, const char *action)
 			g_gpio_pa21_pwm_active = 0;
 		}
 		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &g_gpio_saved_config[port][pin]);
-		if (port == GPIO_PORT_A && pin == 21) xf16cam_board_gpio_test(0);
+		HAL_GPIO_GetConfig((GPIO_Port)port, (GPIO_Pin)pin, &config);
+		if (config.mode != g_gpio_saved_config[port][pin].mode)
+			return -3;
 		if (g_gpio_saved_config[port][pin].mode == GPIOx_Pn_F1_OUTPUT)
 			HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin, g_gpio_saved_state[port][pin]);
 		g_gpio_saved_valid[port][pin] = 0;
+		if (port == GPIO_PORT_A && pin == 21) xf16cam_board_gpio_test(0);
 		return 0;
 	}
 	if (strcmp(action, "low") != 0 && strcmp(action, "high") != 0 &&
@@ -145,6 +148,10 @@ static int xf16cam_gpio_apply(int port, int pin, const char *action)
 	if (strcmp(action, "input") == 0) {
 		config.mode = GPIOx_Pn_F0_INPUT;
 		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &config);
+	} else if (strcmp(action, "disable") == 0 && port == GPIO_PORT_A && pin == 21) {
+		config.mode = GPIOx_Pn_F1_OUTPUT;
+		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &config);
+		HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin, GPIO_PIN_LOW);
 	} else if (strcmp(action, "disable") == 0) {
 		config.mode = GPIOx_Pn_F7_DISABLE;
 		HAL_GPIO_Init((GPIO_Port)port, (GPIO_Pin)pin, &config);
@@ -154,6 +161,11 @@ static int xf16cam_gpio_apply(int port, int pin, const char *action)
 		HAL_GPIO_WritePin((GPIO_Port)port, (GPIO_Pin)pin,
 			strcmp(action, "high") == 0 ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
 	}
+	HAL_GPIO_GetConfig((GPIO_Port)port, (GPIO_Pin)pin, &config);
+	if (config.mode != (strcmp(action, "input") == 0 ? GPIOx_Pn_F0_INPUT :
+	                    strcmp(action, "disable") == 0 && !(port == GPIO_PORT_A && pin == 21) ?
+	                    GPIOx_Pn_F7_DISABLE : GPIOx_Pn_F1_OUTPUT))
+		return -3;
 	return 0;
 }
 
@@ -771,8 +783,8 @@ static void xf16cam_http_page(int fd)
 	                  "function gpioBulk(){gpioSend(gpioSelected(),$('#gpioBulkAction').value)}"
 	                  "function gpioBulkGroup(b,a){let d=b.closest('details'),p=[...d.querySelectorAll('.gpio-check:checked')].map(e=>e.value);if(!p.length)p=[...d.querySelectorAll('.gpio-check')].map(e=>e.value).slice(0,10);gpioSend(p,a)}"
 	                  "async function gpioAction(b,a){let row=b.closest('.gpio-row'),pin=row.dataset.pin;if(['low','high','disable'].includes(a)&&!confirm('This can interrupt camera, SD, Flash or attached hardware. Continue?'))return;"
-	                  "let [p,n]=pin.split(':'),data=new URLSearchParams({port:p,pin:n,action:a});try{let r=await fetch('/api/gpio',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data});if(!r.ok)throw Error('HTTP '+r.status);"
-	                  "row.querySelector('.gpio-state').textContent=a==='low'||a==='high'?'OUTPUT · '+a.toUpperCase():a.toUpperCase();gpioStatus(pin+' updated');"
+	                  "let [p,n]=pin.split(':'),data=new URLSearchParams({port:p,pin:n,action:a});try{let r=await fetch('/api/gpio',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data});if(!r.ok)throw Error((await r.text())||('HTTP '+r.status));"
+	                  "let actual=(a==='low'||a==='high'||(a==='disable'&&p==='0'&&n==='21'))?'OUTPUT · '+(a==='high'?'HIGH':'LOW'):a.toUpperCase();row.querySelector('.gpio-state').textContent=actual;gpioStatus(pin+' verified · '+actual);"
 	                  "if(a==='restore')row.querySelectorAll('button').forEach(x=>{if(x.textContent==='RESTORE')x.disabled=true})}catch(e){gpioStatus('Failed: '+e.message)}}"
 	                  "async function gpioBrightness(i){let data=new URLSearchParams({port:'0',pin:'21',action:'brightness',brightness:i.value});try{let r=await fetch('/api/gpio',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data});if(!r.ok)throw 0;gpioStatus('PA21 brightness '+i.value+'%')}catch(e){gpioStatus('PWM update failed')}}"
 
