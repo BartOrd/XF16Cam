@@ -399,7 +399,7 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd, "</span></span><b>Light intensity</b><span><span id=intensityStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_STRONGER(config) ? "Stronger (PB3 OUTPUT LOW)" : "Weaker (PB3 INPUT)");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
-	                  "</span></span></div><form onsubmit='return setLight(this)'>"
+	                  "</span></span></div><form onsubmit='return setLight(event)'>"
 	                  "<button name=light value=disabled");
 	if (XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
@@ -511,15 +511,14 @@ static void xf16cam_http_page(int fd)
 	                  "function tab(id){A('.panel').forEach(e=>e.classList.toggle('on',e.id==id));"
 	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)});"
 	                  "if(id==='live'){vh=0;videoStart()}else videoStop(1)}"
-	                  "async function setLight(f){let b=f.querySelector('button:not([disabled])'),s=$('#lightResult');"
-	                  "if(!b||b.disabled)return false;b.disabled=true;s.textContent='Saving...';"
-	                  "let d=new FormData(f),k=d.has('light')?'light':'intensity',v=d.get(k);"
+	                  "async function setLight(e){e.preventDefault();let f=e.target,b=e.submitter,s=$('#lightResult');"
+	                  "if(!b||b.disabled)return false;let k=b.name,v=b.value;b.disabled=true;s.textContent='Saving...';"
 	                  "try{let r=await fetch('/api/light',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-	                  "body:new URLSearchParams(d)});if(!r.ok)throw 0;"
+	                  "body:encodeURIComponent(k)+'='+encodeURIComponent(v)});if(!r.ok)throw 0;"
 	                  "if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
 	                  "else $('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';"
 	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'}"
-	                  "catch(e){s.textContent='Save failed'}finally{b.disabled=false}return false}"
+	                  "catch(e){s.textContent='Save failed';b.disabled=false}return false}"
 	                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
