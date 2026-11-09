@@ -401,17 +401,17 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "</span></span></div><form onsubmit='return setLight(this)'>"
 	                  "<button name=light value=disabled");
-	if (!XF16CAM_LIGHT_ENABLED(config))
+	if (XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button name=light value=enabled");
-	if (XF16CAM_LIGHT_ENABLED(config))
+	if (!XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form onsubmit='return setLight(this)'>"
 	                  "<button name=intensity value=weaker");
-	if (!XF16CAM_LIGHT_STRONGER(config))
+	if (XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button name=intensity value=stronger");
-	if (XF16CAM_LIGHT_STRONGER(config))
+	if (!XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form><span id=lightResult aria-live=polite></span></section></div>");
 
