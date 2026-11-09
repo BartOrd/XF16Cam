@@ -14,6 +14,7 @@
 #define XF16CAM_RESET_BUTTON_PIN     GPIO_PIN_20
 #define XF16CAM_BUTTON_POLL_MS       (50)
 #define XF16CAM_BUTTON_DEBOUNCE_MS   (300)
+#define XF16CAM_MODE_HOLD_MS         (1500)
 #define XF16CAM_RESET_HOLD_MS        (3000)
 #define XF16CAM_BOARD_STACK_SIZE     (1024)
 
@@ -82,6 +83,7 @@ static void xf16cam_board_task(void *arg)
 {
 	XF16CamButtonState mode_button = {0};
 	XF16CamButtonState reset_button = {0};
+	unsigned int mode_held_ms = 0;
 	unsigned int reset_held_ms = 0;
 	unsigned int blink_ms = 0;
 	int mode_armed = 0;
@@ -131,6 +133,7 @@ static void xf16cam_board_task(void *arg)
 			reset_button.candidate_ms = 0;
 			mode_armed = !mode_pressed;
 			mode_press_accepted = 0;
+			mode_held_ms = 0;
 			reset_armed = !reset_pressed;
 			reset_held_ms = 0;
 			reset_handled = 0;
@@ -142,25 +145,36 @@ static void xf16cam_board_task(void *arg)
 			if (mode_changed) {
 				if (mode_button.stable) {
 					mode_press_accepted = mode_armed;
-					if (mode_press_accepted)
+					if (mode_press_accepted) {
 						mode_armed = 0;
+						mode_held_ms = 0;
+					}
 				} else {
 					mode_armed = 1;
-					if (mode_press_accepted) {
+					if (mode_press_accepted &&
+					    mode_held_ms >= XF16CAM_MODE_HOLD_MS) {
 						XF16CamMediaMode next =
 							xf16cam_config_get()->media_mode == XF16CAM_MEDIA_WEB ?
 							XF16CAM_MEDIA_RTSP : XF16CAM_MEDIA_WEB;
 
 						mode_press_accepted = 0;
-						printf("xf16cam PA15: stable press released, switching media mode to %s\n",
+						printf("xf16cam PA15: deliberate hold (%u ms), switching media mode to %s\n",
+						       mode_held_ms,
 						       next == XF16CAM_MEDIA_WEB ? "WEB" : "RTSP");
 						if (xf16cam_config_save_media_and_begin_update(next) == 0)
 							xf16cam_board_reboot_now();
 						else
 							printf("xf16cam PA15: mode switch ignored (busy or flash write failed)\n");
+					} else if (mode_press_accepted) {
+						printf("xf16cam PA15: ignored short press (%u ms)\n", mode_held_ms);
 					}
+					mode_press_accepted = 0;
+					mode_held_ms = 0;
 				}
 			}
+			if (mode_button.stable && mode_press_accepted &&
+			    mode_held_ms < XF16CAM_MODE_HOLD_MS)
+				mode_held_ms += XF16CAM_BUTTON_POLL_MS;
 
 			if (reset_changed && !reset_button.stable) {
 				reset_armed = 1;
