@@ -359,7 +359,8 @@ static void xf16cam_http_page(int fd)
 	                  "<button type=button data-tab=network onclick=tab('network')>Network</button>"
 	                  "<button type=button data-tab=storage onclick=tab('storage')>Storage</button>"
 	                  "<button type=button data-tab=system onclick=tab('system')>System</button> "
-	                  "<button type=button data-tab=light onclick=tab('light')>Light</button></nav>"
+	                  "<button type=button data-tab=light onclick=tab('light')>Light</button>"
+		                  "<button type=button data-tab=gpio onclick=tab('gpio')>GPIO test</button></nav>"
 	                  "<div id=live class=panel><section class=card><h2>Camera</h2><div class=grid>"
 	                  "<b>Sensor</b><span>");
 	xf16cam_http_send_text(fd, xf16cam_sensor_name());
