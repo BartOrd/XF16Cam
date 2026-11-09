@@ -291,6 +291,13 @@ static void xf16cam_http_gpio_bulk(int fd, const char *body)
 	while (token != NULL) {
 		int port, pin;
 		if (sscanf(token, "%d:%d", &port, &pin) != 2 || ++count > 10) goto invalid;
+		if (strcmp(action, "restore") == 0 &&
+		    port >= GPIO_PORT_A && port < GPIO_PORT_NUM &&
+		    pin >= 0 && pin < xf16cam_gpio_pin_count(port) &&
+		    !g_gpio_saved_valid[port][pin]) {
+			token = strtok(NULL, ",");
+			continue;
+		}
 		if (xf16cam_gpio_apply(port, pin, action) != 0) ++failed;
 		token = strtok(NULL, ",");
 	}
