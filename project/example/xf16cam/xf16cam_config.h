@@ -21,6 +21,11 @@ typedef enum {
 	XF16CAM_RESOLUTION_VGA = 1,
 } XF16CamResolution;
 
+#define XF16CAM_LIGHT_ENABLED_FLAG  (0x01U)
+#define XF16CAM_LIGHT_STRONGER_FLAG (0x02U)
+#define XF16CAM_LIGHT_ENABLED(config) (((config)->reserved & XF16CAM_LIGHT_ENABLED_FLAG) != 0)
+#define XF16CAM_LIGHT_STRONGER(config) (((config)->reserved & XF16CAM_LIGHT_STRONGER_FLAG) != 0)
+
 typedef struct {
 	uint32_t magic;
 	uint16_t schema;
@@ -40,6 +45,7 @@ int xf16cam_config_save_sta(const char *ssid, const char *psk);
 int xf16cam_config_save_ap(void);
 int xf16cam_config_save_media(XF16CamMediaMode mode);
 int xf16cam_config_save_resolution(XF16CamResolution resolution);
+int xf16cam_config_save_light(uint8_t enabled, uint8_t stronger);
 int xf16cam_update_begin(void);
 void xf16cam_update_end(void);
 int xf16cam_update_active(void);

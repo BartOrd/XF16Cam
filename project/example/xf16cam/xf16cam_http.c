@@ -19,6 +19,7 @@
 #include "common/framework/sysinfo.h"
 
 #include "xf16cam_config.h"
+#include "xf16cam_light.h"
 #include "xf16cam_audio.h"
 #include "xf16cam_board.h"
 #include "xf16cam_http.h"
@@ -352,7 +353,8 @@ static void xf16cam_http_page(int fd)
 	                  "<nav class=tabs><button type=button data-tab=live onclick=tab('live')>Live</button>"
 	                  "<button type=button data-tab=network onclick=tab('network')>Network</button>"
 	                  "<button type=button data-tab=storage onclick=tab('storage')>Storage</button>"
-	                  "<button type=button data-tab=system onclick=tab('system')>System</button></nav>"
+	                  "<button type=button data-tab=system onclick=tab('system')>System</button> "
+	                  "<button type=button data-tab=light onclick=tab('light')>Light</button></nav>"
 	                  "<div id=live class=panel><section class=card><h2>Camera</h2><div class=grid>"
 	                  "<b>Sensor</b><span>");
 	xf16cam_http_send_text(fd, xf16cam_sensor_name());
@@ -387,6 +389,31 @@ static void xf16cam_http_page(int fd)
 	                  !audio->available ? "AMIC unavailable" :
 	                  audio->active ? "AMIC active, PCMU/8000" : "AMIC ready (on demand)", audio->peak);
 	xf16cam_http_send_all(fd, dynamic, length);
+
+
+	XF16CAM_HTTP_SEND_LITERAL(fd,
+	                  "<div id=light class=panel><section class='card wide'><h2>Light</h2>"
+	                  "<p>White LED control. Settings are saved to flash and restored at startup.</p>"
+	                  "<div class=grid><b>Light</b><span>");
+	xf16cam_http_send_text(fd, XF16CAM_LIGHT_ENABLED(config) ? "Enabled (PB20 HIGH)" : "Disabled (PB20 LOW)");
+	XF16CAM_HTTP_SEND_LITERAL(fd, "</span><b>Light intensity</b><span>");
+	xf16cam_http_send_text(fd, XF16CAM_LIGHT_STRONGER(config) ? "Stronger (PB3 OUTPUT LOW)" : "Weaker (PB3 INPUT)");
+	XF16CAM_HTTP_SEND_LITERAL(fd,
+	                  "</span></div><form method=post action=/api/light>"
+	                  "<button name=light value=disabled");
+	if (!XF16CAM_LIGHT_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button name=light value=enabled");
+	if (XF16CAM_LIGHT_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light>"
+	                  "<button name=intensity value=weaker");
+	if (!XF16CAM_LIGHT_STRONGER(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button name=intensity value=stronger");
+	if (XF16CAM_LIGHT_STRONGER(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form></section></div>");
 
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<div id=network class=panel><section class='card wide'><h2>Wi-Fi setup</h2>"
@@ -897,6 +924,39 @@ static int xf16cam_http_handle(int fd)
 		}
 		xf16cam_http_message(fd, "200 OK", "Open AP restored. Rebooting...");
 		return XF16CAM_HTTP_COLD_REBOOT;
+
+	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/light") == 0) {
+		uint8_t enabled = XF16CAM_LIGHT_ENABLED(xf16cam_config_get()) ? 1U : 0U;
+		uint8_t stronger = XF16CAM_LIGHT_STRONGER(xf16cam_config_get()) ? 1U : 0U;
+		int valid = 0;
+
+		if (xf16cam_form_value(body, "light", mode, sizeof(mode)) == 0) {
+			if (strcmp(mode, "enabled") == 0) {
+				enabled = 1;
+				valid = 1;
+			} else if (strcmp(mode, "disabled") == 0) {
+				enabled = 0;
+				valid = 1;
+			}
+		} else if (xf16cam_form_value(body, "intensity", mode, sizeof(mode)) == 0) {
+			if (strcmp(mode, "stronger") == 0) {
+				stronger = 1;
+				valid = 1;
+			} else if (strcmp(mode, "weaker") == 0) {
+				stronger = 0;
+				valid = 1;
+			}
+		}
+		if (!valid) {
+			xf16cam_http_message(fd, "400 Bad Request", "Invalid light setting.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		if (xf16cam_config_save_light(enabled, stronger) != 0) {
+			xf16cam_http_message(fd, "500 Internal Server Error", "Could not save light settings to flash.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		xf16cam_light_apply();
+		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		if (xf16cam_form_value(body, "mode", mode, sizeof(mode)) != 0 ||
 		    xf16cam_config_save_media(strcmp(mode, "web") == 0 ? XF16CAM_MEDIA_WEB :
