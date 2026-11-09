@@ -27,8 +27,9 @@ browser MJPEG or a single-client RTSP stream without PSRAM.
 - Stream: `rtsp://<device-ip>:8554/stream`
 - The responsive web console has Live, Network, Storage, and System tabs, with
   a focal embedded MJPEG view that can switch exclusively with RTSP mode.
-- Browser MJPEG frames are terminated as standalone, immutable JPEG images;
-  both web and RTSP clients finish sending one frame before the next capture.
+- Browser MJPEG and RTSP use continuous JPEG capture with rotating buffers when
+  memory permits; allocation falls back from three buffers to two or one, with
+  single-frame capture retained as the low-memory fallback.
 - Device information reports flash identity, the known XF16 pin map, uptime,
   SDK-cached boot cause, and XF16 chip temperature.
 - Runtime diagnostics retain the minimum spare stack values for the HTTP,

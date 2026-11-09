@@ -425,8 +425,8 @@ int xf16cam_media_client_connected(int fd)
 	return received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK);
 }
 
-/* Still-mode acquisition leaves the returned buffer immutable until the next
- * call. Video mode rotates immediately and can overwrite a slow socket send. */
+/* Continuous capture rotates through multiple JPEG buffers while the client
+ * receives the previously completed frame. */
 __xip_text
 static int xf16cam_capture_stream_start(void)
 {
