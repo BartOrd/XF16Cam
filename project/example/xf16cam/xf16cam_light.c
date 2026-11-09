@@ -19,17 +19,27 @@ void xf16cam_light_apply(void)
 		.driving = GPIO_DRIVING_LEVEL_1,
 		.pull = GPIO_PULL_NONE,
 	};
+	GPIO_InitParam current;
 	GPIO_PinState light_state = XF16CAM_LIGHT_ENABLED(config) ? GPIO_PIN_HIGH : GPIO_PIN_LOW;
 
-	HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, light_state);
-	HAL_GPIO_Init(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, &output);
+	HAL_GPIO_GetConfig(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, &current);
+	if (current.mode != output.mode || current.driving != output.driving ||
+	    current.pull != output.pull) {
+		HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, light_state);
+		HAL_GPIO_Init(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, &output);
+	}
 	HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, light_state);
 
+	HAL_GPIO_GetConfig(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, &current);
 	if (XF16CAM_LIGHT_STRONGER(config)) {
+		if (current.mode != output.mode || current.driving != output.driving ||
+		    current.pull != output.pull) {
+			HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, GPIO_PIN_LOW);
+			HAL_GPIO_Init(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, &output);
+		}
 		HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, GPIO_PIN_LOW);
-		HAL_GPIO_Init(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, &output);
-		HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, GPIO_PIN_LOW);
-	} else {
+	} else if (current.mode != input.mode || current.driving != input.driving ||
+	           current.pull != input.pull) {
 		HAL_GPIO_Init(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, &input);
 	}
 }
