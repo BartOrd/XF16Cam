@@ -4,10 +4,19 @@
 
 XF16Cam is compact, local network-camera firmware for the 1 MiB-flash A9
 camera built around the XF16/XR872ET-family platform. It replaces the factory
-cloud application with a responsive web console and RTSP video,
+cloud application with a responsive web console, browser video or RTSP,
 microphone audio, Wi-Fi setup, and web OTA - all without PSRAM.
 
-
+<table>
+  <tr>
+    <td width="74%"><img src="docs/images/xf16cam-web-console.png" alt="XF16Cam desktop web console showing a GC0311 at 640 x 480"></td>
+    <td width="26%"><img src="docs/images/xf16cam-web-console-mobile.png" alt="XF16Cam responsive mobile web console"></td>
+  </tr>
+  <tr>
+    <td align="center">Desktop live view</td>
+    <td align="center">Responsive phone layout</td>
+  </tr>
+</table>
 
 The firmware is a standalone application over the XRADIO Skylark SDK. It does
 not require an app or an Internet service: after flashing, the camera can stay
@@ -15,7 +24,9 @@ entirely on your own network.
 
 ## What works
 
-- Single-client RTSP with RTP/JPEG video and optional PCMU microphone audio.
+- Browser MJPEG with optional live microphone audio, or single-client RTSP with
+  RTP/JPEG and PCMU audio. The two video modes are selected exclusively to fit
+  the available SRAM.
 - A mobile-friendly web console with Live, Network, Storage, and System pages.
 - Open setup AP, nearby-network scan, STA credentials stored in flash, and
   automatic fallback to the setup AP after a failed connection.
@@ -76,7 +87,7 @@ and more identification detail.
 4. Open `http://192.168.4.1/`, scan for your Wi-Fi network, enter its password,
    and save. The camera reboots into station mode; the web console remains
    available at its new address.
-5. Open the RTSP stream at:
+5. Select **Browser video** in the Live page, or open the default RTSP stream at:
 
    ```text
    rtsp://<camera-ip>:8554/stream
@@ -94,12 +105,12 @@ also cover a reproducible Linux build.
 
 | Control | XF16Cam function |
 | --- | --- |
-| PA15 button | Not used by XF16Cam; the media mode is fixed to RTSP. |
+| PA15 mode button | Press and release to switch Browser MJPEG ↔ RTSP, save the choice, and reboot. |
 | PA20 setup button | Hold for 3 seconds to restore the open `XF16CAM` setup AP and reboot. It is also configured as the hibernation wake input. |
 | PA21 status LED | Blinks while starting, stays on when services are ready, and turns off for hibernation. This is usually the blue LED on the tested A9. |
 | Red LED | Not controlled or characterised by XF16Cam; it may be part of the board's power/charging circuit. |
 
-Wi-Fi setup and device management are available from the web console. PA20
+The same media and setup operations are available from the web console. PA20
 remains the physical wake control after manual hibernation.
 
 ## Supported camera sensors
@@ -127,7 +138,8 @@ per-sensor resolution support.
 - The setup AP, HTTP console, RTSP stream, configuration, and OTA endpoint have
   no authentication or TLS. Use this research firmware only on a trusted local
   network; anyone who can reach it can view, configure, or update it.
-- Video is single-client, and the RTSP server supports interleaved TCP transport only.
+- Video is single-client. Browser MJPEG and RTSP cannot run simultaneously, and
+  the RTSP server supports interleaved TCP transport only.
 - SD-card management works, but still-photo and video recording are not yet
   implemented.
 - Battery voltage is approximate and uncalibrated. Charging state, percentage,
