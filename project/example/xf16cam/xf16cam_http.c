@@ -456,11 +456,22 @@ static void xf16cam_http_page(int fd)
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Auto day/night on</button></form>"
 	                  "<small>Automatic mode disables manual light controls and switches the IR-cut filter / IR LED using the light sensor.</small>"
-	                  "<form method=post action=/api/motion><button name=motion value=disabled>Motion off</button> "
-	                  "<button name=motion value=enabled>Motion on</button></form>"
-	                  "<form method=post action=/api/motion><button name=alarm value=disabled>Alarm off</button> "
-	                  "<button name=alarm value=enabled>Alarm on</button></form>"
+	                  "<form method=post action=/api/motion><button onclick='motionSubmit(this);return false' name=motion value=disabled");
+	if (XF16CAM_MOTION_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Motion off</button> <button onclick='motionSubmit(this);return false' name=motion value=enabled");
+	if (!XF16CAM_MOTION_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Motion on</button></form>"
+	                  "<form method=post action=/api/motion><button onclick='motionSubmit(this);return false' name=alarm value=disabled");
+	if (XF16CAM_MOTION_ALARM_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Alarm off</button> <button onclick='motionSubmit(this);return false' name=alarm value=enabled");
+	if (!XF16CAM_MOTION_ALARM_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Alarm on</button></form>"
 	                  "<small>At night, an enabled motion alarm briefly turns on the white fill light. Motion events are counted above.</small>"
+	                  "<span id=motionResult aria-live=polite></span>"
 	                  "<span id=lightResult aria-live=polite></span></section></div>");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<div id=position class=panel><section class='card wide'><h2>Position</h2>"
@@ -582,6 +593,13 @@ static void xf16cam_http_page(int fd)
 	                  "else{f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);"
 	                  "A('.manual-light').forEach(x=>x.disabled=v==='enabled'||x.dataset.active==='1')}"
 	                  "s.textContent='Saved'})"
+	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
+	                  "function motionSubmit(b){let f=b.form,s=$('#motionResult'),k=b.name,v=b.value;"
+	                  "if(!f||b.disabled)return false;b.disabled=true;s.textContent='Saving...';"
+	                  "fetch(f.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+	                  "body:encodeURIComponent(k)+'='+encodeURIComponent(v)})"
+	                  ".then(r=>{if(!r.ok)throw 0;return r.text()})"
+	                  ".then(()=>{f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'})"
 	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
 	                  "let ptzPressTimer=0,ptzHolding=false,ptzMode='',ptzStartPromise=null;"
                   "async function ptzSend(mode,action){let d=new URLSearchParams();d.set('mode',mode);d.set('action',action);"
