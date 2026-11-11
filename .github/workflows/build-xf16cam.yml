@@ -31,6 +31,16 @@ jobs:
             -o /tmp/xf16cam-rtsp-parser-test
           /tmp/xf16cam-rtsp-parser-test
 
+      - name: Check JPEG motion detector input handling
+        shell: bash
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror \
+            -Iproject/example/xf16cam \
+            tests/xf16cam/test_motion.c \
+            project/example/xf16cam/xf16cam_motion.c \
+            -o /tmp/xf16cam-motion-test
+          /tmp/xf16cam-motion-test
+
       - name: Install Arm GNU Toolchain
         uses: carlosperate/arm-none-eabi-gcc-action@v1
         with:

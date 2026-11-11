@@ -34,6 +34,7 @@
 #include "xf16cam_sensor.h"
 #include "xf16cam_storage.h"
 #include "xf16cam_version.h"
+#include "xf16cam_motion.h"
 
 #define JPEG_ONLINE_EN           (1)
 #define JPEG_BUFFER_COUNT_MAX    (3)
@@ -506,6 +507,12 @@ static int xf16cam_capture_jpeg(CAMERA_JpegBuffInfo *info, uint8_t **jpeg,
 	++g_media_info.frames;
 	if (info->size > g_media_info.largest_jpeg)
 		g_media_info.largest_jpeg = info->size;
+	if (XF16CAM_MOTION_ENABLED(xf16cam_config_get())) {
+		if (xf16cam_motion_process_jpeg(*jpeg, *jpeg_len, 55U))
+			xf16cam_board_motion_detected();
+	} else {
+		xf16cam_motion_reset();
+	}
 	return 0;
 }
 

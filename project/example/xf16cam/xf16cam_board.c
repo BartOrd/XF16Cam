@@ -164,7 +164,8 @@ void xf16cam_board_motion_detected(void)
 	now = OS_TicksToMSecs(OS_GetTicks());
 	__sync_add_and_fetch(&g_motion_events, 1U);
 	g_motion_last_event_ms = now;
-	if (XF16CAM_AUTO_DAY_NIGHT(config) && g_cds_dark_state) {
+	if (XF16CAM_MOTION_ALARM_ENABLED(config) &&
+	    XF16CAM_AUTO_DAY_NIGHT(config) && g_cds_dark_state) {
 		g_white_boost_until_ms = now + XF16CAM_MOTION_LIGHT_MS;
 		xf16cam_board_set_ir_led(0);
 		xf16cam_light_apply();
