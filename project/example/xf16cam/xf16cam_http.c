@@ -545,25 +545,25 @@ static void xf16cam_http_page(int fd)
 	                  "else if(k==='intensity')$('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';else $('#dayNightStatus').textContent=v==='enabled'?'Enabled':'Disabled';"
 	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'})"
 	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
-	                  "let ptzPressTimer=0,ptzHolding=false,ptzBusy=false,ptzMode='';"
-                  "async function ptzSend(mode){let d=new URLSearchParams();d.set('mode',mode);"
+	                  "let ptzPressTimer=0,ptzHolding=false,ptzMode='';"
+                  "async function ptzSend(mode,action){let d=new URLSearchParams();d.set('mode',mode);d.set('action',action);"
                   "let r=await fetch('/api/ptz',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d.toString()});"
-                  "if(!r.ok)throw 0;await r.text()}"
-                  "async function ptzRepeat(){if(!ptzHolding||ptzBusy)return;ptzBusy=true;try{await ptzSend(ptzMode);"
-                  "if(ptzHolding)$('#positionResult').textContent='Moving...'}catch(e){ptzHolding=false;"
-                  "$('#positionResult').textContent='Movement failed'}finally{ptzBusy=false;"
-                  "if(ptzHolding)ptzPressTimer=setTimeout(ptzRepeat,0)}}"
-                  "function ptzPress(e,b){if(ptzBusy||ptzHolding||ptzPressTimer)return;"
+                  "if(!r.ok)throw 0;return r.text()}"
+                  "function ptzPress(e,b){if(ptzHolding||ptzPressTimer)return;"
                   "if(e.pointerType==='mouse'&&e.button!==0)return;e.preventDefault();ptzMode=b.value;"
                   "try{b.setPointerCapture(e.pointerId)}catch(x){}ptzPressTimer=setTimeout(()=>{ptzPressTimer=0;"
-                  "ptzHolding=true;$('#positionResult').textContent='Moving...';ptzRepeat()},250)}"
+                  "ptzHolding=true;$('#positionResult').textContent='Moving...';"
+                  "ptzSend(ptzMode,'start').catch(()=>{ptzHolding=false;$('#positionResult').textContent='Movement failed'})},250)}"
                   "function ptzRelease(e){if(ptzPressTimer&&!ptzHolding){clearTimeout(ptzPressTimer);ptzPressTimer=0;"
-                  "let m=ptzMode;ptzBusy=true;$('#positionResult').textContent='Moving...';"
-                  "ptzSend(m).then(()=>$('#positionResult').textContent='Movement complete')"
-                  ".catch(()=>$('#positionResult').textContent='Movement failed').finally(()=>ptzBusy=false);return}"
-                  "if(ptzHolding){ptzHolding=false;ptzPressTimer=0;$('#positionResult').textContent='Stopped'}}"
-                  "function ptzCancel(e){if(ptzPressTimer)clearTimeout(ptzPressTimer);ptzPressTimer=0;ptzHolding=false}"
+                  "let m=ptzMode;$('#positionResult').textContent='Moving...';"
+                  "ptzSend(m,'step').then(()=>$('#positionResult').textContent='Movement complete')"
+                  ".catch(()=>$('#positionResult').textContent='Movement failed');return}"
+                  "if(ptzHolding){ptzHolding=false;ptzSend(ptzMode,'stop').then(()=>$('#positionResult').textContent='Stopped')"
+                  ".catch(()=>$('#positionResult').textContent='Stop failed')}}"
+                  "function ptzCancel(e){if(ptzPressTimer)clearTimeout(ptzPressTimer);ptzPressTimer=0;"
+                  "if(ptzHolding){ptzHolding=false;ptzSend(ptzMode,'stop').catch(()=>{});$('#positionResult').textContent='Stopped'}}"
                   "D.addEventListener('visibilitychange',()=>{if(D.hidden)ptzCancel()});"
+                  "D.addEventListener('blur',ptzCancel);"
                   "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
@@ -982,9 +982,12 @@ static int xf16cam_http_handle(int fd)
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/light") == 0) {
 		uint8_t enabled = XF16CAM_LIGHT_ENABLED(xf16cam_config_get()) ? 1U : 0U;
 		uint8_t stronger = XF16CAM_LIGHT_STRONGER(xf16cam_config_get()) ? 1U : 0U;
+		uint8_t daynight = XF16CAM_AUTO_DAY_NIGHT(xf16cam_config_get()) ? 1U : 0U;
+		int setting = 0;
 		int valid = 0;
 
 		if (xf16cam_form_value(body, "light", mode, sizeof(mode)) == 0) {
+			setting = 1;
 			if (strcmp(mode, "enabled") == 0) {
 				enabled = 1;
 				valid = 1;
@@ -993,6 +996,7 @@ static int xf16cam_http_handle(int fd)
 				valid = 1;
 			}
 		} else if (xf16cam_form_value(body, "intensity", mode, sizeof(mode)) == 0) {
+			setting = 2;
 			if (strcmp(mode, "stronger") == 0) {
 				stronger = 1;
 				valid = 1;
@@ -1000,35 +1004,72 @@ static int xf16cam_http_handle(int fd)
 				stronger = 0;
 				valid = 1;
 			}
+		} else if (xf16cam_form_value(body, "daynight", mode, sizeof(mode)) == 0) {
+			setting = 3;
+			if (strcmp(mode, "enabled") == 0) {
+				daynight = 1;
+				valid = 1;
+			} else if (strcmp(mode, "disabled") == 0) {
+				daynight = 0;
+				valid = 1;
+			}
 		}
 		if (!valid) {
 			xf16cam_http_message(fd, "400 Bad Request", "Invalid light setting.");
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
-		if (xf16cam_config_save_light(enabled, stronger) != 0) {
+		if ((setting == 3 && xf16cam_config_save_daynight(daynight) != 0) ||
+		    (setting != 3 && xf16cam_config_save_light(enabled, stronger) != 0)) {
 			xf16cam_http_message(fd, "500 Internal Server Error", "Could not save light settings to flash.");
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
+		if (setting == 3 && !daynight)
+			xf16cam_board_set_ir_led(0);
 		xf16cam_light_apply();
 		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/ptz") == 0) {
+		char action[12];
+		int direction = 0;
+
 		if (xf16cam_form_value(body, "mode", mode, sizeof(mode)) != 0) {
 			xf16cam_http_message(fd, "400 Bad Request", "Missing PTZ direction.");
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
 		if (strcmp(mode, "left") == 0)
-			ptz_move_left();
+			direction = XF16CAM_PTZ_LEFT;
 		else if (strcmp(mode, "right") == 0)
-			ptz_move_right();
+			direction = XF16CAM_PTZ_RIGHT;
 		else if (strcmp(mode, "up") == 0)
-			ptz_move_up();
+			direction = XF16CAM_PTZ_UP;
 		else if (strcmp(mode, "down") == 0)
-			ptz_move_down();
+			direction = XF16CAM_PTZ_DOWN;
 		else {
 			xf16cam_http_message(fd, "400 Bad Request", "Invalid PTZ direction.");
 			return XF16CAM_HTTP_KEEP_RUNNING;
 		}
-		xf16cam_http_message(fd, "200 OK", "PTZ movement completed.");
+
+		if (xf16cam_form_value(body, "action", action, sizeof(action)) != 0 ||
+		    strcmp(action, "step") == 0) {
+			if (direction == XF16CAM_PTZ_LEFT)
+				ptz_move_left();
+			else if (direction == XF16CAM_PTZ_RIGHT)
+				ptz_move_right();
+			else if (direction == XF16CAM_PTZ_UP)
+				ptz_move_up();
+			else
+				ptz_move_down();
+		} else if (strcmp(action, "start") == 0) {
+			if (xf16cam_ptz_start(direction) != 0) {
+				xf16cam_http_message(fd, "503 Service Unavailable", "PTZ movement task unavailable.");
+				return XF16CAM_HTTP_KEEP_RUNNING;
+			}
+		} else if (strcmp(action, "stop") == 0) {
+			xf16cam_ptz_stop();
+		} else {
+			xf16cam_http_message(fd, "400 Bad Request", "Invalid PTZ action.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		xf16cam_http_message(fd, "200 OK", "PTZ command accepted.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		XF16CamMediaMode media_mode;
 
