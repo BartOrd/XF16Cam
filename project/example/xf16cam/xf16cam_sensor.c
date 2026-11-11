@@ -302,6 +302,7 @@ __xip_rodata static const XF16CamSensor g_sensors[] = {
 };
 
 static const XF16CamSensor *g_selected;
+static int g_sensor_night_mode;
 static uint16_t g_output_width;
 static uint16_t g_output_height;
 
@@ -583,6 +584,40 @@ int xf16cam_sensor_configure_camera(uint16_t configured_width,
 	       (unsigned int)g_selected->csi.href_pol,
 	       (unsigned int)g_selected->csi.clk_pol,
 	       (unsigned int)g_selected->csi.sync_type);
+
+	if (g_sensor_night_mode)
+		xf16cam_sensor_switch_cam_sensor_mode(1);
+	return 0;
+}
+
+static const uint8_t g_sp0a39_night_mode[] = {
+	0xFD, 0x01, 0x47, 0x20, 0xFD, 0x00,
+};
+
+static const uint8_t g_sp0a39_day_mode[] = {
+	0xFD, 0x01, 0x47, 0x00, 0xFD, 0x00,
+};
+
+__xip_text
+int xf16cam_sensor_switch_cam_sensor_mode(int night_mode)
+{
+	I2C_ID bus = I2C0_ID;
+	const uint8_t *sequence;
+	uint16_t length;
+	uint16_t offset;
+
+	g_sensor_night_mode = night_mode != 0;
+	if (!g_selected || strcmp(g_selected->name, "SP0A39") != 0)
+		return 0;
+
+	sequence = g_sensor_night_mode ? g_sp0a39_night_mode : g_sp0a39_day_mode;
+	length = g_sensor_night_mode ? sizeof(g_sp0a39_night_mode) : sizeof(g_sp0a39_day_mode);
+	for (offset = 0; offset + 1 < length; offset += 2) {
+		uint8_t reg = sequence[offset];
+		uint8_t value = sequence[offset + 1];
+		if (HAL_I2C_SCCB_Master_Transmit_IT(bus, g_selected->address, reg, &value) != 1)
+			return -1;
+	}
 	return 0;
 }
 
