@@ -460,14 +460,14 @@ static void xf16cam_http_page(int fd)
 	if (XF16CAM_MOTION_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Motion off</button> <button onclick='motionSubmit(this);return false' name=motion value=enabled");
-	if (!XF16CAM_MOTION_ENABLED(config))
+	if (XF16CAM_MOTION_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Motion on</button></form>"
 	                  "<form method=post action=/api/motion><button onclick='motionSubmit(this);return false' name=alarm value=disabled");
 	if (XF16CAM_MOTION_ALARM_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Alarm off</button> <button onclick='motionSubmit(this);return false' name=alarm value=enabled");
-	if (!XF16CAM_MOTION_ALARM_ENABLED(config))
+	if (XF16CAM_MOTION_ALARM_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Alarm on</button></form>"
 	                  "<small>At night, an enabled motion alarm briefly turns on the white fill light. Motion events are counted above.</small>"
