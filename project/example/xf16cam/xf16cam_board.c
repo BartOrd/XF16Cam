@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "kernel/os/os.h"
 #include "driver/chip/hal_adc.h"
