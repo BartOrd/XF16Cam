@@ -64,7 +64,7 @@ void xf16cam_ptz_init(void)
 		                    OS_THREAD_PRIO_APP, PTZ_THREAD_STACK_SIZE) == OS_OK)
 			g_ptz_task_started = 1;
 		else
-			printf("xf16cam PTZ: movement thread create failed\\n");
+			printf("xf16cam PTZ: movement thread create failed\n");
 	}
 }
 
