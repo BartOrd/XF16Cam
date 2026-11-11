@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 
 #include "kernel/os/os.h"
 #include "driver/chip/hal_gpio.h"
@@ -27,6 +28,7 @@ static const uint8_t g_ptz_halfstep[8] = {
 
 static unsigned int g_horizontal_step;
 static unsigned int g_vertical_step;
+static void ptz_task(void *arg);
 static OS_Thread_t g_ptz_thread;
 static volatile int g_ptz_task_started;
 static volatile int g_ptz_direction;
@@ -162,6 +164,7 @@ static void ptz_move(const GPIO_Pin *pins, unsigned int *step,
 {
 	unsigned int index;
 
+	g_ptz_direction = 0;
 	if (!g_ptz_ready)
 		xf16cam_ptz_init();
 
