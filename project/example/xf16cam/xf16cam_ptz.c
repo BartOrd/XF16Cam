@@ -27,6 +27,11 @@ static const uint8_t g_ptz_halfstep[8] = {
 
 static unsigned int g_horizontal_step;
 static unsigned int g_vertical_step;
+static OS_Thread_t g_ptz_thread;
+static volatile int g_ptz_task_started;
+static volatile int g_ptz_direction;
+static int g_ptz_coils_active;
+#define PTZ_THREAD_STACK_SIZE 1024U
 
 __xip_text
 void xf16cam_ptz_init(void)
@@ -38,17 +43,27 @@ void xf16cam_ptz_init(void)
 	};
 	unsigned int index;
 
-	for (index = 0; index < 4; ++index) {
-		HAL_GPIO_Init(MOTOR_GPIO_PORT, g_horizontal_motor_pins[index], &output);
-		HAL_GPIO_Init(MOTOR_GPIO_PORT, g_vertical_motor_pins[index], &output);
-		HAL_GPIO_WritePin(MOTOR_GPIO_PORT, g_horizontal_motor_pins[index], GPIO_PIN_LOW);
-		HAL_GPIO_WritePin(MOTOR_GPIO_PORT, g_vertical_motor_pins[index], GPIO_PIN_LOW);
+	if (!g_ptz_ready) {
+		for (index = 0; index < 4; ++index) {
+			HAL_GPIO_Init(MOTOR_GPIO_PORT, g_horizontal_motor_pins[index], &output);
+			HAL_GPIO_Init(MOTOR_GPIO_PORT, g_vertical_motor_pins[index], &output);
+			HAL_GPIO_WritePin(MOTOR_GPIO_PORT, g_horizontal_motor_pins[index], GPIO_PIN_LOW);
+			HAL_GPIO_WritePin(MOTOR_GPIO_PORT, g_vertical_motor_pins[index], GPIO_PIN_LOW);
+		}
+
+		g_horizontal_step = 0;
+		g_vertical_step = 0;
+		g_ptz_ready = 1;
+		g_last_ptz_time = OS_TicksToMSecs(OS_GetTicks());
 	}
 
-	g_horizontal_step = 0;
-	g_vertical_step = 0;
-	g_ptz_ready = 1;
-	g_last_ptz_time = OS_TicksToMSecs(OS_GetTicks());
+	if (!g_ptz_task_started) {
+		if (OS_ThreadCreate(&g_ptz_thread, "xf16cam-ptz", ptz_task, NULL,
+		                    OS_THREAD_PRIO_APP, PTZ_THREAD_STACK_SIZE) == OS_OK)
+			g_ptz_task_started = 1;
+		else
+			printf("xf16cam PTZ: movement thread create failed\\n");
+	}
 }
 
 __xip_text
@@ -56,6 +71,7 @@ void xf16cam_ptz_power_down(void)
 {
 	unsigned int index;
 
+	g_ptz_direction = 0;
 	if (!g_ptz_ready)
 		return;
 
@@ -67,6 +83,7 @@ void xf16cam_ptz_power_down(void)
 	}
 
 	g_ptz_ready = 0;
+	g_ptz_coils_active = 0;
 	g_last_ptz_time = 0;
 }
 
@@ -79,6 +96,63 @@ static void ptz_write_phase(const GPIO_Pin *pins, unsigned int phase)
 		HAL_GPIO_WritePin(MOTOR_GPIO_PORT, pins[bit],
 		                  (g_ptz_halfstep[phase] & (1U << (3U - bit))) ?
 		                  GPIO_PIN_HIGH : GPIO_PIN_LOW);
+	}
+}
+
+
+static void ptz_task(void *arg)
+{
+	(void)arg;
+	while (1) {
+		const GPIO_Pin *pins = NULL;
+		unsigned int *step = NULL;
+		int direction = g_ptz_direction;
+		int rotation = 1;
+
+		if (!g_ptz_ready || direction == 0) {
+			if (g_ptz_ready && g_ptz_coils_active) {
+				unsigned int index;
+				for (index = 0; index < 4; ++index) {
+					HAL_GPIO_WritePin(MOTOR_GPIO_PORT, g_horizontal_motor_pins[index], GPIO_PIN_LOW);
+					HAL_GPIO_WritePin(MOTOR_GPIO_PORT, g_vertical_motor_pins[index], GPIO_PIN_LOW);
+				}
+				g_ptz_coils_active = 0;
+			}
+			OS_MSleep(4);
+			continue;
+		}
+
+		switch (direction) {
+		case XF16CAM_PTZ_LEFT:
+			pins = g_horizontal_motor_pins;
+			step = &g_horizontal_step;
+			rotation = -1;
+			break;
+		case XF16CAM_PTZ_RIGHT:
+			pins = g_horizontal_motor_pins;
+			step = &g_horizontal_step;
+			break;
+		case XF16CAM_PTZ_UP:
+			pins = g_vertical_motor_pins;
+			step = &g_vertical_step;
+			break;
+		case XF16CAM_PTZ_DOWN:
+			pins = g_vertical_motor_pins;
+			step = &g_vertical_step;
+			rotation = -1;
+			break;
+		default:
+			g_ptz_direction = 0;
+			continue;
+		}
+
+		if (g_ptz_direction != direction || !g_ptz_ready)
+			continue;
+		*step = rotation > 0 ? (*step + 1U) % 8U : (*step + 7U) % 8U;
+		ptz_write_phase(pins, *step);
+		g_ptz_coils_active = 1;
+		g_last_ptz_time = OS_TicksToMSecs(OS_GetTicks());
+		OS_MSleep(PTZ_STEP_DELAY_MS);
 	}
 }
 
@@ -128,4 +202,23 @@ void ptz_move_down(void)
 {
 	ptz_move(g_vertical_motor_pins, &g_vertical_step,
 	         VERTICAL_STEPS, -1);
+}
+
+int xf16cam_ptz_start(int direction)
+{
+	if (direction < XF16CAM_PTZ_LEFT || direction > XF16CAM_PTZ_DOWN)
+		return -1;
+	xf16cam_ptz_init();
+	if (!g_ptz_task_started)
+		return -1;
+	g_ptz_direction = direction;
+	g_last_ptz_time = OS_TicksToMSecs(OS_GetTicks());
+	return 0;
+}
+
+void xf16cam_ptz_stop(void)
+{
+	g_ptz_direction = 0;
+	if (g_ptz_ready)
+		g_last_ptz_time = OS_TicksToMSecs(OS_GetTicks());
 }
