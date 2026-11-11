@@ -407,7 +407,7 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "</span></span><b>Motion detection</b><span id=motionStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_MOTION_ENABLED(config) ? "Enabled" : "Disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, "</span><b>Motion alarm</b><span id=motionAlarmStatus>");
+	XF16CAM_HTTP_SEND_LITERAL(fd, "</span><b>Sound alarm</b><span id=motionAlarmStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_MOTION_ALARM_ENABLED(config) ? "Enabled" : "Disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, "</span><b>Motion events</b><span id=motionEvents>");
 	length = snprintf(dynamic, sizeof(dynamic), "%lu",
@@ -457,20 +457,20 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Auto day/night on</button></form>"
 	                  "<small>Automatic mode disables manual light controls and switches the IR-cut filter / IR LED using the light sensor.</small>"
 	                  "<form method=post action=/api/motion><button onclick='motionSubmit(this);return false' name=motion value=disabled");
-	if (XF16CAM_MOTION_ENABLED(config))
+	if (!XF16CAM_MOTION_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Motion off</button> <button onclick='motionSubmit(this);return false' name=motion value=enabled");
 	if (XF16CAM_MOTION_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Motion on</button></form>"
 	                  "<form method=post action=/api/motion><button onclick='motionSubmit(this);return false' name=alarm value=disabled");
+	if (!XF16CAM_MOTION_ALARM_ENABLED(config))
+		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Sound alarm off</button> <button onclick='motionSubmit(this);return false' name=alarm value=enabled");
 	if (XF16CAM_MOTION_ALARM_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Alarm off</button> <button onclick='motionSubmit(this);return false' name=alarm value=enabled");
-	if (XF16CAM_MOTION_ALARM_ENABLED(config))
-		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Alarm on</button></form>"
-	                  "<small>At night, an enabled motion alarm briefly turns on the white fill light. Motion events are counted above.</small>"
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Sound alarm on</button></form>"
+	                  "<small>Motion turns on the white fill light for 30 seconds when movement is detected at night. The sound alarm works independently of Motion.</small>"
 	                  "<span id=motionResult aria-live=polite></span>"
 	                  "<span id=lightResult aria-live=polite></span></section></div>");
 	XF16CAM_HTTP_SEND_LITERAL(fd,

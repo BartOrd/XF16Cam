@@ -80,3 +80,23 @@ void xf16cam_rail_release(void)
 	}
 	OS_MutexUnlock(&g_rail_lock);
 }
+
+__xip_text
+void xf16cam_rail_restore(void)
+{
+	GPIO_InitParam output = {
+		.mode = GPIOx_Pn_F1_OUTPUT,
+		.driving = GPIO_DRIVING_LEVEL_1,
+		.pull = GPIO_PULL_NONE,
+	};
+
+	if (!g_rail_lock_ready ||
+	    OS_MutexLock(&g_rail_lock, OS_WAIT_FOREVER) != OS_OK)
+		return;
+	if (g_rail_users > 0) {
+		HAL_GPIO_Init(XF16CAM_MEDIA_RAIL_PORT, XF16CAM_MEDIA_RAIL_PIN, &output);
+		HAL_GPIO_WritePin(XF16CAM_MEDIA_RAIL_PORT, XF16CAM_MEDIA_RAIL_PIN,
+		                  GPIO_PIN_HIGH);
+	}
+	OS_MutexUnlock(&g_rail_lock);
+}

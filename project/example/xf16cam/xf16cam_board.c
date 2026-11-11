@@ -15,6 +15,7 @@
 #include "xf16cam_storage.h"
 #include "xf16cam_sensor.h"
 #include "xf16cam_motion.h"
+#include "xf16cam_alarm.h"
 
 #define XF16CAM_RESET_BUTTON_PORT GPIO_PORT_B
 #define XF16CAM_RESET_BUTTON_PIN  GPIO_PIN_19
@@ -28,6 +29,7 @@
 #define XF16CAM_IRCUT_NIGHT_PIN   GPIO_PIN_13
 #define XF16CAM_IRCUT_PULSE_MS    (120U)
 #define XF16CAM_MOTION_LIGHT_MS   (30000U)
+#define XF16CAM_MOTION_EVENT_GAP_MS (2000U)
 #define XF16CAM_CDS_CHANNEL       ADC_CHANNEL_5
 #define XF16CAM_CDS_SAMPLES       (10U)
 #define XF16CAM_CDS_DARK_THRESHOLD (1500U)
@@ -144,7 +146,7 @@ int xf16cam_board_ircut_night(void)
 
 int xf16cam_board_night_mode(void)
 {
-	return XF16CAM_AUTO_DAY_NIGHT(xf16cam_config_get()) && g_cds_dark_state;
+	return g_cds_dark_state;
 }
 
 int xf16cam_board_white_boost_active(void)
@@ -159,17 +161,22 @@ void xf16cam_board_motion_detected(void)
 	uint32_t now;
 	const XF16CamConfig *config = xf16cam_config_get();
 
-	if (!XF16CAM_MOTION_ENABLED(config))
+	if (!XF16CAM_MOTION_ENABLED(config) &&
+	    !XF16CAM_MOTION_ALARM_ENABLED(config))
 		return;
 	now = OS_TicksToMSecs(OS_GetTicks());
+	if (g_motion_events != 0U &&
+	    (uint32_t)(now - g_motion_last_event_ms) < XF16CAM_MOTION_EVENT_GAP_MS)
+		return;
 	__sync_add_and_fetch(&g_motion_events, 1U);
 	g_motion_last_event_ms = now;
-	if (XF16CAM_MOTION_ALARM_ENABLED(config) &&
-	    XF16CAM_AUTO_DAY_NIGHT(config) && g_cds_dark_state) {
+	if (XF16CAM_MOTION_ENABLED(config) && g_cds_dark_state) {
 		g_white_boost_until_ms = now + XF16CAM_MOTION_LIGHT_MS;
 		xf16cam_board_set_ir_led(0);
 		xf16cam_light_apply();
 	}
+	if (XF16CAM_MOTION_ALARM_ENABLED(config))
+		xf16cam_alarm_trigger();
 }
 
 uint32_t xf16cam_board_motion_events(void)
@@ -238,14 +245,7 @@ static void xf16cam_board_daynight_poll(void)
 {
 	uint16_t level;
 	int previous_night = g_cds_dark_state;
-
-	if (!XF16CAM_AUTO_DAY_NIGHT(xf16cam_config_get())) {
-		g_cds_dark_state = 0;
-		g_white_boost_until_ms = 0;
-		xf16cam_board_set_ir_led(0);
-		xf16cam_light_apply();
-		return;
-	}
+	int auto_day_night = XF16CAM_AUTO_DAY_NIGHT(xf16cam_config_get());
 
 	if (xf16cam_board_cds_read(&level) != 0)
 		return;
@@ -259,6 +259,12 @@ static void xf16cam_board_daynight_poll(void)
 
 	if (previous_night && !g_cds_dark_state)
 		g_white_boost_until_ms = 0;
+	if (!auto_day_night) {
+		if (!xf16cam_board_white_boost_active())
+			xf16cam_board_set_ir_led(0);
+		xf16cam_light_apply();
+		return;
+	}
 	if (!xf16cam_board_white_boost_active())
 		xf16cam_board_set_ir_led(g_cds_dark_state);
 	xf16cam_light_apply();

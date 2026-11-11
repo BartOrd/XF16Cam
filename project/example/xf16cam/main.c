@@ -25,6 +25,7 @@
 #include "xf16cam_config.h"
 #include "xf16cam_light.h"
 #include "xf16cam_audio.h"
+#include "xf16cam_alarm.h"
 #include "xf16cam_board.h"
 #include "xf16cam_http.h"
 #include "xf16cam_media.h"
@@ -74,15 +75,20 @@ static void xf16_board_camera_power_down(void);
 static uint8_t *gmemaddr;
 static uint8_t *g_jpeg_send_buffer;
 static uint8_t g_jpeg_buffer_count;
-static int g_video_capture_active;
+static volatile int g_video_capture_active;
 static CAMERA_Mgmt mem_mgmt;
 static OS_Mutex_t g_camera_lock;
 static int g_camera_lock_ready;
+static OS_Mutex_t g_capture_lock;
+static int g_capture_lock_ready;
 static int g_camera_initialized;
 static uint32_t g_camera_users;
 static OS_Thread_t g_mjpeg_thread;
 static volatile int g_mjpeg_active;
 static volatile int g_rtsp_active;
+static OS_Thread_t g_motion_monitor_thread;
+static volatile int g_motion_monitor_camera;
+static int g_motion_monitor_created;
 static XF16CamMediaInfo g_media_info = {
 	.jpeg_capacity = JPEG_BUFF_SIZE,
 };
@@ -268,6 +274,10 @@ static int xf16cam_camera_manager_init(void)
 	if (OS_MutexCreate(&g_camera_lock) != OS_OK)
 		return -1;
 	g_camera_lock_ready = 1;
+	if (OS_MutexCreate(&g_capture_lock) == OS_OK)
+		g_capture_lock_ready = 1;
+	else
+		printf("xf16cam capture lock create failed; background motion is disabled\n");
 	if (xf16_board_camera_power_prepare() != 0)
 		return -1;
 	if (camera_init() != 0) {
@@ -298,6 +308,7 @@ static int xf16cam_camera_acquire(void)
 		g_camera_initialized = 1;
 	}
 	++g_camera_users;
+	xf16cam_alarm_camera_start();
 	result = 0;
 out:
 	OS_MutexUnlock(&g_camera_lock);
@@ -313,8 +324,10 @@ static void xf16cam_camera_release(void)
 	if (g_camera_users > 0)
 		--g_camera_users;
 	if (g_camera_users == 0 && g_camera_initialized) {
+		xf16cam_alarm_camera_stop();
 		camera_deinit();
 		g_camera_initialized = 0;
+		xf16cam_alarm_camera_close();
 		printf("xf16cam camera: idle; capture memory released\n");
 	}
 	OS_MutexUnlock(&g_camera_lock);
@@ -452,27 +465,43 @@ int xf16cam_media_client_connected(int fd)
 __xip_text
 static int xf16cam_capture_stream_start(void)
 {
+	int locked = 0;
+
+	if (g_capture_lock_ready &&
+	    OS_MutexLock(&g_capture_lock, OS_WAIT_FOREVER) == OS_OK)
+		locked = 1;
 	if (g_jpeg_buffer_count > 1) {
 		xf16cam_sensor_prepare_capture();
 		if (HAL_CAMERA_CaptureVideoStart() == 0) {
 			g_video_capture_active = 1;
 			printf("xf16cam capture: continuous video mode with %u JPEG buffers\n",
 			       (unsigned int)g_jpeg_buffer_count);
+			if (locked)
+				OS_MutexUnlock(&g_capture_lock);
 			return 0;
 		}
 		printf("xf16cam capture: video mode unavailable, using still capture\n");
 	}
 	g_video_capture_active = 0;
+	if (locked)
+		OS_MutexUnlock(&g_capture_lock);
 	return 0;
 }
 
 __xip_text
 static void xf16cam_capture_stream_stop(void)
 {
+	int locked = 0;
+
+	if (g_capture_lock_ready &&
+	    OS_MutexLock(&g_capture_lock, OS_WAIT_FOREVER) == OS_OK)
+		locked = 1;
 	if (g_video_capture_active) {
 		HAL_CAMERA_CaptureVideoStop();
 		g_video_capture_active = 0;
 	}
+	if (locked)
+		OS_MutexUnlock(&g_capture_lock);
 }
 
 __xip_text
@@ -507,12 +536,73 @@ static int xf16cam_capture_jpeg(CAMERA_JpegBuffInfo *info, uint8_t **jpeg,
 	++g_media_info.frames;
 	if (info->size > g_media_info.largest_jpeg)
 		g_media_info.largest_jpeg = info->size;
-	if (XF16CAM_MOTION_ENABLED(xf16cam_config_get())) {
-		if (xf16cam_motion_process_jpeg(*jpeg, *jpeg_len, 55U))
-			xf16cam_board_motion_detected();
-	} else {
-		xf16cam_motion_reset();
+	{
+		const XF16CamConfig *config = xf16cam_config_get();
+		if (XF16CAM_MOTION_ENABLED(config) || XF16CAM_MOTION_ALARM_ENABLED(config)) {
+			if (xf16cam_motion_process_jpeg(*jpeg, *jpeg_len, 55U))
+				xf16cam_board_motion_detected();
+		} else {
+			xf16cam_motion_reset();
+		}
 	}
+	return 0;
+}
+
+static void xf16cam_motion_monitor_task(void *arg)
+{
+	int camera_acquired = 0;
+
+	(void)arg;
+	while (1) {
+		const XF16CamConfig *config = xf16cam_config_get();
+		int detection_enabled = XF16CAM_MOTION_ENABLED(config) ||
+		                        XF16CAM_MOTION_ALARM_ENABLED(config);
+		int monitor_allowed = detection_enabled && !xf16cam_update_active() &&
+		                      !g_mjpeg_active && !g_rtsp_active;
+
+		if (monitor_allowed && !camera_acquired) {
+			g_motion_monitor_camera = 1;
+			if (xf16cam_camera_acquire() == 0) {
+				camera_acquired = 1;
+			} else {
+				g_motion_monitor_camera = 0;
+				OS_MSleep(500);
+				continue;
+			}
+		} else if (!monitor_allowed && camera_acquired) {
+			xf16cam_camera_release();
+			camera_acquired = 0;
+			g_motion_monitor_camera = 0;
+		}
+
+		if (camera_acquired && monitor_allowed && g_capture_lock_ready &&
+		    OS_MutexLock(&g_capture_lock, OS_WAIT_FOREVER) == OS_OK) {
+			if (!g_mjpeg_active && !g_rtsp_active && !g_video_capture_active &&
+			    !xf16cam_update_active()) {
+				CAMERA_JpegBuffInfo info;
+				uint8_t *jpeg;
+				uint32_t jpeg_len;
+				(void)xf16cam_capture_jpeg(&info, &jpeg, &jpeg_len);
+			}
+			OS_MutexUnlock(&g_capture_lock);
+		}
+		if (!detection_enabled)
+			xf16cam_motion_reset();
+		OS_MSleep(250);
+	}
+}
+
+static int xf16cam_motion_monitor_start(void)
+{
+	if (g_motion_monitor_created)
+		return 0;
+	if (!g_capture_lock_ready)
+		return -1;
+	if (OS_ThreadCreate(&g_motion_monitor_thread, "xf16cam-motion",
+	                    xf16cam_motion_monitor_task, NULL,
+	                    OS_THREAD_PRIO_APP, 2 * 1024) != OS_OK)
+		return -1;
+	g_motion_monitor_created = 1;
 	return 0;
 }
 
@@ -1073,7 +1163,8 @@ int xf16cam_media_quiesce_for_update(uint32_t timeout_ms)
 	uint32_t start = OS_TicksToMSecs(OS_GetTicks());
 
 	while (OS_TicksToMSecs(OS_GetTicks()) - start < timeout_ms) {
-		if (!g_mjpeg_active && !g_rtsp_active && xf16cam_audio_update_ready())
+		if (!g_mjpeg_active && !g_rtsp_active && !g_motion_monitor_camera &&
+		    xf16cam_audio_update_ready())
 			return 0;
 		OS_MSleep(10);
 	}
@@ -1093,6 +1184,8 @@ int main(void)
 	int rtsp_server = -1;
 
 	platform_init();
+	if (xf16cam_alarm_init() != 0)
+		printf("xf16cam alarm: audio output initialization failed\n");
 	printf("xf16cam version %s\n", XF16CAM_VERSION);
 	if (xf16cam_rail_init() != 0)
 		printf("xf16cam media rail: initialization failed\n");
@@ -1113,8 +1206,11 @@ int main(void)
 	xf16cam_storage_init();
 	if (xf16cam_net_start(xf16cam_config_get()) != 0) {
 		printf("xf16cam network start failed; console recovery remains available\n");
-		if (camera_ready)
+		if (camera_ready) {
 			xf16cam_camera_release_boot_probe();
+			if (xf16cam_motion_monitor_start() != 0)
+				printf("xf16cam motion monitor: task start failed\n");
+		}
 		xf16cam_idle();
 	}
 	if (camera_ready && xf16cam_config_get()->media_mode == XF16CAM_MEDIA_RTSP) {
@@ -1126,14 +1222,20 @@ int main(void)
 		printf("xf16cam management unavailable; console recovery remains available\n");
 		if (rtsp_server >= 0)
 			closesocket(rtsp_server);
-		if (camera_ready)
+		if (camera_ready) {
 			xf16cam_camera_release_boot_probe();
+			if (xf16cam_motion_monitor_start() != 0)
+				printf("xf16cam motion monitor: task start failed\n");
+		}
 		xf16cam_idle();
 	}
 	if (board_ready)
 		xf16cam_board_set_ready();
-	if (camera_ready)
+	if (camera_ready) {
 		xf16cam_camera_release_boot_probe();
+		if (xf16cam_motion_monitor_start() != 0)
+			printf("xf16cam motion monitor: task start failed\n");
+	}
 	if (rtsp_server < 0 && camera_ready &&
 	    xf16cam_config_get()->media_mode == XF16CAM_MEDIA_RTSP)
 		xf16cam_idle();
