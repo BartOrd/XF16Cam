@@ -66,7 +66,7 @@ static int xf16cam_config_storage_valid(const XF16CamConfig *config)
 		return 0;
 	}
 	if (config->schema == XF16CAM_CONFIG_SCHEMA &&
-	    (config->reserved & ~(XF16CAM_LIGHT_ENABLED_FLAG | XF16CAM_LIGHT_STRONGER_FLAG)) != 0)
+	    (config->reserved & ~(XF16CAM_LIGHT_ENABLED_FLAG | XF16CAM_LIGHT_STRONGER_FLAG | XF16CAM_AUTO_DAY_NIGHT_FLAG)) != 0)
 		return 0;
 	return config->checksum == xf16cam_config_checksum(config);
 }
@@ -279,8 +279,33 @@ int xf16cam_config_save_light(uint8_t enabled, uint8_t stronger)
 		return -1;
 	}
 	config = *xf16cam_config_get();
-	config.reserved = (enabled ? XF16CAM_LIGHT_ENABLED_FLAG : 0U) |
+	config.reserved = (config.reserved & ~(XF16CAM_LIGHT_ENABLED_FLAG | XF16CAM_LIGHT_STRONGER_FLAG)) |
+	                  (enabled ? XF16CAM_LIGHT_ENABLED_FLAG : 0U) |
 	                  (stronger ? XF16CAM_LIGHT_STRONGER_FLAG : 0U);
+	result = xf16cam_config_write(&config);
+	OS_MutexUnlock(&g_config_lock);
+	return result;
+}
+
+
+int xf16cam_config_save_daynight(uint8_t enabled)
+{
+	XF16CamConfig config;
+	int result;
+
+	if (enabled > 1)
+		return -1;
+	if (!g_config_lock_ready || OS_MutexLock(&g_config_lock, OS_WAIT_FOREVER) != OS_OK)
+		return -1;
+	if (g_update_active) {
+		OS_MutexUnlock(&g_config_lock);
+		return -1;
+	}
+	config = *xf16cam_config_get();
+	if (enabled)
+		config.reserved |= XF16CAM_AUTO_DAY_NIGHT_FLAG;
+	else
+		config.reserved &= (uint8_t)~XF16CAM_AUTO_DAY_NIGHT_FLAG;
 	result = xf16cam_config_write(&config);
 	OS_MutexUnlock(&g_config_lock);
 	return result;
