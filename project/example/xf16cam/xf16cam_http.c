@@ -26,6 +26,7 @@
 #include "xf16cam_media.h"
 #include "xf16cam_net.h"
 #include "xf16cam_power.h"
+#include "xf16cam_ptz.h"
 #include "xf16cam_sensor.h"
 #include "xf16cam_storage.h"
 #include "xf16cam_version.h"
@@ -354,7 +355,8 @@ static void xf16cam_http_page(int fd)
 	                  "<button type=button data-tab=network onclick=tab('network')>Network</button>"
 	                  "<button type=button data-tab=storage onclick=tab('storage')>Storage</button>"
 	                  "<button type=button data-tab=system onclick=tab('system')>System</button> "
-	                  "<button type=button data-tab=light onclick=tab('light')>Light</button></nav>"
+	                  "<button type=button data-tab=light onclick=tab('light')>Light</button> "
+		                  "<button type=button data-tab=position onclick=tab('position')>Position</button></nav>"
 	                  "<div id=live class=panel><section class=card><h2>Camera</h2><div class=grid>"
 	                  "<b>Sensor</b><span>");
 	xf16cam_http_send_text(fd, xf16cam_sensor_name());
@@ -413,6 +415,17 @@ static void xf16cam_http_page(int fd)
 	if (XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form><span id=lightResult aria-live=polite></span></section></div>");
+	XF16CAM_HTTP_SEND_LITERAL(fd,
+	                  "<div id=position class=panel><section class='card wide'><h2>Position</h2>"
+	                  "<p>Each press moves the camera by one fixed motor increment.</p>"
+	                  "<div style='display:grid;grid-template-columns:repeat(3,64px);gap:6px;width:max-content;margin:12px auto'>"
+	                  "<span></span><button type=button value=up onclick='ptzMove(this)'>▲</button><span></span>"
+	                  "<button type=button value=left onclick='ptzMove(this)'>◀</button>"
+	                  "<span style='display:grid;place-items:center'>PTZ</span>"
+	                  "<button type=button value=right onclick='ptzMove(this)'>▶</button>"
+	                  "<span></span><button type=button value=down onclick='ptzMove(this)'>▼</button><span></span>"
+	                  "</div><span id=positionResult aria-live=polite>Ready</span></section></div>");
+
 
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<div id=network class=panel><section class='card wide'><h2>Wi-Fi setup</h2>"
@@ -518,7 +531,12 @@ static void xf16cam_http_page(int fd)
 	                  "else $('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';"
 	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'})"
 	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
-	                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
+	                  "async function ptzMove(b){let s=$('#positionResult'),q=A('#position button');if(!b||b.disabled)return false;"
+                  "q.forEach(x=>x.disabled=true);s.textContent='Moving...';try{let d=new URLSearchParams();d.set('mode',b.value);"
+                  "let r=await fetch('/api/ptz',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d.toString()});"
+                  "if(!r.ok)throw 0;await r.text();s.textContent='Movement complete'}catch(e){s.textContent='Movement failed'}"
+                  "finally{q.forEach(x=>x.disabled=false)}return false}"
+                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
 	                  "async function scan(){let s=$('#scan'),b=$('#scanButton'),d=$('#networks');"
@@ -965,6 +983,24 @@ static int xf16cam_http_handle(int fd)
 		}
 		xf16cam_light_apply();
 		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
+	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/ptz") == 0) {
+		if (xf16cam_form_value(body, "mode", mode, sizeof(mode)) != 0) {
+			xf16cam_http_message(fd, "400 Bad Request", "Missing PTZ direction.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		if (strcmp(mode, "left") == 0)
+			ptz_move_left();
+		else if (strcmp(mode, "right") == 0)
+			ptz_move_right();
+		else if (strcmp(mode, "up") == 0)
+			ptz_move_up();
+		else if (strcmp(mode, "down") == 0)
+			ptz_move_down();
+		else {
+			xf16cam_http_message(fd, "400 Bad Request", "Invalid PTZ direction.");
+			return XF16CAM_HTTP_KEEP_RUNNING;
+		}
+		xf16cam_http_message(fd, "200 OK", "PTZ movement completed.");
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		XF16CamMediaMode media_mode;
 
