@@ -21,7 +21,8 @@ void xf16cam_light_apply(void)
 		.pull = GPIO_PULL_NONE,
 	};
 	GPIO_InitParam current;
-	GPIO_PinState light_state = XF16CAM_LIGHT_ENABLED(config) ? GPIO_PIN_HIGH : GPIO_PIN_LOW;
+	GPIO_PinState light_state = !XF16CAM_AUTO_DAY_NIGHT(config) && XF16CAM_LIGHT_ENABLED(config) ?
+	                           GPIO_PIN_HIGH : GPIO_PIN_LOW;
 
 	HAL_GPIO_GetConfig(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, &current);
 	if (current.mode != output.mode || current.driving != output.driving ||
