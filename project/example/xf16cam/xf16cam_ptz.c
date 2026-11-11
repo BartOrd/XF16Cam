@@ -102,6 +102,7 @@ static void ptz_write_phase(const GPIO_Pin *pins, unsigned int phase)
 }
 
 
+__xip_text
 static void ptz_task(void *arg)
 {
 	(void)arg;
