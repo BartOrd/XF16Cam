@@ -86,6 +86,7 @@ static uint32_t g_camera_users;
 static OS_Thread_t g_mjpeg_thread;
 static volatile int g_mjpeg_active;
 static volatile int g_rtsp_active;
+static volatile int g_rtsp_video_active;
 static OS_Thread_t g_motion_monitor_thread;
 static volatile int g_motion_monitor_camera;
 static int g_motion_monitor_created;
@@ -558,7 +559,7 @@ static void xf16cam_motion_monitor_task(void *arg)
 		int detection_enabled = XF16CAM_MOTION_ENABLED(config) ||
 		                        XF16CAM_MOTION_ALARM_ENABLED(config);
 		int monitor_allowed = detection_enabled && !xf16cam_update_active() &&
-		                      !g_mjpeg_active && !g_rtsp_active;
+		                      !g_mjpeg_active && !g_rtsp_video_active;
 
 		if (monitor_allowed && !camera_acquired) {
 			g_motion_monitor_camera = 1;
@@ -577,7 +578,7 @@ static void xf16cam_motion_monitor_task(void *arg)
 
 		if (camera_acquired && monitor_allowed && g_capture_lock_ready &&
 		    OS_MutexLock(&g_capture_lock, OS_WAIT_FOREVER) == OS_OK) {
-			if (!g_mjpeg_active && !g_rtsp_active && !g_video_capture_active &&
+			if (!g_mjpeg_active && !g_rtsp_video_active && !g_video_capture_active &&
 			    !xf16cam_update_active()) {
 				CAMERA_JpegBuffInfo info;
 				uint8_t *jpeg;
@@ -1035,6 +1036,8 @@ static int xf16cam_stream_client(int fd, const char *ip)
 					goto stopped;
 				camera_acquired = 1;
 			}
+			if (session.video_setup)
+				g_rtsp_video_active = 1;
 			timestamp = OS_TicksToMSecs(OS_GetTicks()) * 90U;
 			audio_cursor = xf16cam_audio_cursor();
 			audio_timestamp = audio_cursor * XF16CAM_AUDIO_SAMPLES_PER_PACKET;
@@ -1107,6 +1110,7 @@ stopped:
 		xf16cam_audio_release();
 	if (camera_acquired)
 		xf16cam_camera_release();
+	g_rtsp_video_active = 0;
 	printf("xf16cam client stopped\n");
 	return 0;
 }

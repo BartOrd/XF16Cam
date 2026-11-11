@@ -321,6 +321,7 @@ static void xf16cam_board_task(void *arg)
 			reset_held_ms = 0;
 			reset_handled = 0;
 			buttons_initialized = 1;
+			cds_elapsed_ms = XF16CAM_CDS_CHECK_MS - XF16CAM_BUTTON_POLL_MS;
 		} else {
 			int reset_changed = xf16cam_button_update(&reset_button, reset_pressed);
 
