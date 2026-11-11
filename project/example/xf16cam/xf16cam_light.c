@@ -3,6 +3,7 @@
 #include "xf16cam_config.h"
 #include "xf16cam_light.h"
 #include "xf16cam_ptz.h"
+#include "xf16cam_board.h"
 
 #define XF16CAM_LIGHT_ENABLE_PIN  GPIO_PIN_20
 #define XF16CAM_LIGHT_LEVEL_PIN   GPIO_PIN_3
@@ -21,7 +22,8 @@ void xf16cam_light_apply(void)
 		.pull = GPIO_PULL_NONE,
 	};
 	GPIO_InitParam current;
-	GPIO_PinState light_state = !XF16CAM_AUTO_DAY_NIGHT(config) && XF16CAM_LIGHT_ENABLED(config) ?
+	GPIO_PinState light_state = xf16cam_board_white_boost_active() ||
+	                           (!XF16CAM_AUTO_DAY_NIGHT(config) && XF16CAM_LIGHT_ENABLED(config)) ?
 	                           GPIO_PIN_HIGH : GPIO_PIN_LOW;
 
 	HAL_GPIO_GetConfig(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, &current);
