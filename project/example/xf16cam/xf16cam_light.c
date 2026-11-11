@@ -2,6 +2,7 @@
 
 #include "xf16cam_config.h"
 #include "xf16cam_light.h"
+#include "xf16cam_ptz.h"
 
 #define XF16CAM_LIGHT_ENABLE_PIN  GPIO_PIN_20
 #define XF16CAM_LIGHT_LEVEL_PIN   GPIO_PIN_3
@@ -29,6 +30,9 @@ void xf16cam_light_apply(void)
 		HAL_GPIO_Init(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, &output);
 	}
 	HAL_GPIO_WritePin(GPIO_PORT_B, XF16CAM_LIGHT_ENABLE_PIN, light_state);
+
+	if (g_ptz_ready)
+		return;
 
 	HAL_GPIO_GetConfig(GPIO_PORT_B, XF16CAM_LIGHT_LEVEL_PIN, &current);
 	if (XF16CAM_LIGHT_STRONGER(config)) {
