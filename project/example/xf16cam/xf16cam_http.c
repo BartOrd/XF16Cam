@@ -6,7 +6,6 @@
 #include <strings.h>
 
 #include "compiler.h"
-#include "driver/chip/hal_gpio.h"
 #include "kernel/os/os.h"
 #include "driver/chip/hal_flash.h"
 #include "driver/chip/hal_prcm.h"
@@ -154,16 +153,11 @@ __xip_rodata static const char g_page_head[] =
 	"grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:16px}.wide{grid-column:1/-1}.grid{display:grid;"
 	"grid-template-columns:max-content 1fr;gap:7px 14px}.grid b{color:#43515e}form{margin:8px 0}label{display:block;margin:8px 0}"
 	"input,button{font:inherit;min-height:44px;padding:9px 11px;margin:4px 0;border:1px solid #b9c5cd;border-radius:7px}input{width:100%;background:#fff;font-size:16px}"
-	"button{background:#f7f9fa;cursor:pointer}"
-	".gpioGroups{display:grid;gap:12px}.gpioGroup h3{font-size:.95rem;margin:8px 0}.gpioRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}"
-	".gpioRow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:8px;border:1px solid var(--line);border-radius:8px}"
-	".gpioInfo{display:grid;gap:3px;min-width:0}.gpioInfo small{overflow-wrap:anywhere}.gpioControls{display:flex;flex-wrap:wrap;gap:3px;flex:none}"
-	".gpioControls button{min-height:32px;padding:4px 7px;margin:0;font-size:12px}.gpioLocked{font-size:12px;color:var(--muted)}"
-	"button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
+	"button{background:#f7f9fa}button.primary{background:var(--brand);border-color:var(--brand);color:#fff}"
 	"small{color:var(--muted)}a{color:#096b99}.rtsp{overflow-wrap:anywhere}.nets{display:grid;gap:7px;margin:10px 0}.net{width:100%;display:flex;gap:10px;"
 	"align-items:center;justify-content:space-between;text-align:left;margin:0;background:#fff}.net span:first-child{min-width:0;overflow-wrap:anywhere}.net span:last-child{flex:none;white-space:nowrap}.net.sel{border-color:var(--brand);"
 	"box-shadow:0 0 0 2px #176b5b33;background:#f3faf8}.net.empty{justify-content:center;color:var(--muted)}@media(max-width:680px){header{align-items:flex-start}.panel.on{grid-template-columns:1fr}"
-	".wide{grid-column:auto}.screen{min-height:180px}.grid{grid-template-columns:1fr}.gpioRows{grid-template-columns:1fr}.grid b{margin-top:5px}}</style></head><body>";
+	".wide{grid-column:auto}.screen{min-height:180px}.grid{grid-template-columns:1fr}.grid b{margin-top:5px}}</style></head><body>";
 
 __xip_text
 static int xf16cam_http_send_all(int fd, const void *data, size_t length)
@@ -360,8 +354,7 @@ static void xf16cam_http_page(int fd)
 	                  "<button type=button data-tab=network onclick=tab('network')>Network</button>"
 	                  "<button type=button data-tab=storage onclick=tab('storage')>Storage</button>"
 	                  "<button type=button data-tab=system onclick=tab('system')>System</button> "
-	                  "<button type=button data-tab=light onclick=tab('light')>Light</button>"
-		                  "<button type=button data-tab=gpio onclick=tab('gpio')>GPIO test</button></nav>"
+	                  "<button type=button data-tab=light onclick=tab('light')>Light</button></nav>"
 	                  "<div id=live class=panel><section class=card><h2>Camera</h2><div class=grid>"
 	                  "<b>Sensor</b><span>");
 	xf16cam_http_send_text(fd, xf16cam_sensor_name());
@@ -405,18 +398,18 @@ static void xf16cam_http_page(int fd)
 	XF16CAM_HTTP_SEND_LITERAL(fd, "</span></span><b>Light intensity</b><span><span id=intensityStatus>");
 	xf16cam_http_send_text(fd, XF16CAM_LIGHT_STRONGER(config) ? "Stronger (PB3 OUTPUT LOW)" : "Weaker (PB3 INPUT)");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
-	                  "</span></span></div><form method=post action=/api/light onsubmit='return lightSubmit(event)'>"
-	                  "<button name=light value=disabled");
+	                  "</span></span></div><form method=post action=/api/light>"
+	                  "<button type=submit onclick='lightSubmit(this);return false' name=light value=disabled");
 	if (!XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button name=light value=enabled");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Disabled</button> <button type=submit onclick='lightSubmit(this);return false' name=light value=enabled");
 	if (XF16CAM_LIGHT_ENABLED(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light onsubmit='return lightSubmit(event)'>"
-	                  "<button name=intensity value=weaker");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Enabled</button></form><form method=post action=/api/light>"
+	                  "<button type=submit onclick='lightSubmit(this);return false' name=intensity value=weaker");
 	if (!XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
-	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button name=intensity value=stronger");
+	XF16CAM_HTTP_SEND_LITERAL(fd, ">Weaker</button> <button type=submit onclick='lightSubmit(this);return false' name=intensity value=stronger");
 	if (XF16CAM_LIGHT_STRONGER(config))
 		XF16CAM_HTTP_SEND_LITERAL(fd, " disabled");
 	XF16CAM_HTTP_SEND_LITERAL(fd, ">Stronger</button></form><span id=lightResult aria-live=polite></span></section></div>");
@@ -509,35 +502,23 @@ static void xf16cam_http_page(int fd)
 	                  "<small>Approximate; no auto cutoff.</small></section>");
 	XF16CAM_HTTP_SEND_LITERAL(fd,
 	                  "<section class='card wide'><h2>Firmware update</h2><p>Choose an OTA image and keep power connected.</p>"
-	                  "<input id=ota type=file accept=.img><button id=otaInstall class=primary type=button onclick=update()>Install update</button> <span id=up aria-live=polite></span></section></div>");
-	XF16CAM_HTTP_SEND_LITERAL(fd,
-	                  "<div id=gpio class=panel><section class='card wide'><h2>GPIO diagnostics</h2>"
-	                  "<p>All pins are listed. LOW/HIGH tests are enabled only for pins not assigned to critical board functions. Restore pins after each experiment.</p>"
-	                  "<button type=button onclick=gpioLoad()>Refresh</button> "
-	                  "<button type=button onclick=\"if(confirm('Restore all tested pins?'))gpioAction('A',0,'restore_all')\">Restore all test pins</button> "
-	                  "<span id=gpioStatus aria-live=polite></span><div id=gpioPins class=gpioGroups></div></section></div>");
-	XF16CAM_HTTP_SEND_LITERAL(fd,
+	                  "<input id=ota type=file accept=.img><button id=otaInstall class=primary type=button onclick=update()>Install update</button> <span id=up aria-live=polite></span></section></div>"
 	                  "<script>let D=document,$=s=>D.querySelector(s),A=s=>D.querySelectorAll(s),vt,vh=0;"
 	                  "function videoStop(h){if(h)vh=1;clearTimeout(vt);let v=$('#video');if(v)v.removeAttribute('src')}"
 	                  "function videoStart(){let v=$('#video');if(!v||vh||D.hidden)return;clearTimeout(vt);v.src='/stream.mjpeg'}"
 	                  "function videoRetry(){clearTimeout(vt);if(!vh&&!D.hidden)vt=setTimeout(videoStart,1500)}"
 	                  "function tab(id){A('.panel').forEach(e=>e.classList.toggle('on',e.id==id));"
-	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)});if(id==='gpio')gpioLoad()}"
-	                  "async function lightSubmit(e){e.preventDefault();let f=e.target,b=e.submitter,s=$('#lightResult');"
-	                  "if(!b||b.disabled)return false;let k=b.name,v=b.value;b.disabled=true;s.textContent='Saving...';"
-	                  "try{let r=await fetch(f.action,{method:'POST',body:new URLSearchParams([[k,v]])});"
-	                  "if(!r.ok)throw 0;await r.text();"
-	                  "if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
+	                  "A('.tabs button').forEach(e=>{let on=e.dataset.tab==id;e.classList.toggle('on',on);e.setAttribute('aria-selected',on)})}"
+	                  "function lightSubmit(b){let f=b.form,s=$('#lightResult'),k=b.name,v=b.value;"
+	                  "if(!f||b.disabled)return false;b.disabled=true;s.textContent='Saving...';"
+	                  "fetch(f.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+	                  "body:encodeURIComponent(k)+'='+encodeURIComponent(v)})"
+	                  ".then(r=>{if(!r.ok)throw 0;return r.text()})"
+	                  ".then(()=>{if(k==='light')$('#lightStatus').textContent=v==='enabled'?'Enabled (PB20 HIGH)':'Disabled (PB20 LOW)';"
 	                  "else $('#intensityStatus').textContent=v==='stronger'?'Stronger (PB3 OUTPUT LOW)':'Weaker (PB3 INPUT)';"
-	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'}"
-	                  "catch(e){s.textContent='Save failed';b.disabled=false}return false}"
-	                  "function gpioMode(m){return m===0?'INPUT':m===1?'OUTPUT':m===6?'INTERRUPT':m===7?'DISABLED':'PERIPHERAL ('+m+')'}"
-		                  "async function gpioLoad(){let d=$('#gpioPins');if(!d)return;d.textContent='Loading GPIO map...';try{let r=await fetch('/api/gpio');if(!r.ok)throw 0;let v=await r.json();d.innerHTML='';"
-		                  "for(let p of ['A','B','C']){let g=D.createElement('section'),h=D.createElement('h3'),rows=D.createElement('div');g.className='gpioGroup';h.textContent='Port '+p;rows.className='gpioRows';g.append(h,rows);d.append(g);"
-		                  "v.pins.filter(x=>x.port===p).forEach(x=>{let row=D.createElement('div'),info=D.createElement('div'),name=D.createElement('b'),detail=D.createElement('small'),controls=D.createElement('div');row.className='gpioRow';info.className='gpioInfo';controls.className='gpioControls';name.textContent='P'+x.port+x.pin;detail.textContent=gpioMode(x.mode)+' · '+x.level+' · drive '+x.drive+' · pull '+x.pull+' · '+x.description;info.append(name,detail);"
-		                  "if(x.testable){for(let a of ['low','high','restore']){let b=D.createElement('button');b.type='button';b.textContent=a.toUpperCase();b.onclick=()=>gpioAction(x.port,x.pin,a);controls.append(b)}}else{let lock=D.createElement('span');lock.className='gpioLocked';lock.textContent='Protected';controls.append(lock)}row.append(info,controls);rows.append(row)})} }catch(e){d.textContent='Could not load GPIO map'}}"
-		                  "async function gpioAction(port,pin,action){let s=$('#gpioStatus');s.textContent='Applying...';try{let r=await fetch('/api/gpio',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({port:port,pin:String(pin),action:action})});let t=await r.text();if(!r.ok)throw 0;await gpioLoad();s.textContent=t.replace(/<[^>]*>/g,'')}catch(e){s.textContent='GPIO operation failed'}}"
-		                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
+	                  "f.querySelectorAll('button').forEach(x=>x.disabled=x.value===v);s.textContent='Saved'})"
+	                  ".catch(()=>{s.textContent='Save failed';b.disabled=false});return false}"
+	                  "function clearNet(){A('.net').forEach(e=>e.classList.remove('sel'))}"
 	                  "function pickNet(b){$('#ssid').value=b.dataset.ssid;clearNet();b.classList.add('sel');"
 	                  "$('input[name=password]').focus()}"
 	                  "async function scan(){let s=$('#scan'),b=$('#scanButton'),d=$('#networks');"
@@ -826,239 +807,6 @@ fail:
 	return XF16CAM_HTTP_KEEP_RUNNING;
 }
 
-
-#define XF16CAM_GPIO_MAX_PIN_COUNT 24
-
-typedef struct {
-	GPIO_InitParam config;
-	GPIO_PinState state;
-	uint8_t valid;
-} XF16CamGPIOSnapshot;
-
-static XF16CamGPIOSnapshot g_gpio_snapshots[GPIO_PORT_NUM][XF16CAM_GPIO_MAX_PIN_COUNT];
-
-static unsigned int xf16cam_gpio_pin_count(GPIO_Port port)
-{
-	switch (port) {
-	case GPIO_PORT_A:
-		return GPIOA_PIN_NUM;
-	case GPIO_PORT_B:
-		return GPIOB_PIN_NUM;
-#if (__CONFIG_CHIP_ARCH_VER == 2)
-	case GPIO_PORT_C:
-		return GPIOC_PIN_NUM;
-#endif
-	default:
-		return 0;
-	}
-}
-
-static char xf16cam_gpio_port_name(GPIO_Port port)
-{
-	switch (port) {
-	case GPIO_PORT_A: return 'A';
-	case GPIO_PORT_B: return 'B';
-#if (__CONFIG_CHIP_ARCH_VER == 2)
-	case GPIO_PORT_C: return 'C';
-#endif
-	default: return '?';
-	}
-}
-
-static int xf16cam_gpio_testable(GPIO_Port port, GPIO_Pin pin)
-{
-	switch (port) {
-	case GPIO_PORT_A:
-		return pin == GPIO_PIN_12 || pin == GPIO_PIN_13 || pin == GPIO_PIN_19;
-	case GPIO_PORT_B:
-		return (pin >= GPIO_PIN_8 && pin <= GPIO_PIN_15) || pin == GPIO_PIN_21;
-#if (__CONFIG_CHIP_ARCH_VER == 2)
-	case GPIO_PORT_C:
-		return pin <= GPIO_PIN_12;
-#endif
-	default:
-		return 0;
-	}
-}
-
-static int xf16cam_gpio_available(GPIO_Port port, GPIO_Pin pin, const GPIO_InitParam *config)
-{
-	return xf16cam_gpio_testable(port, pin) &&
-	       (config->mode == GPIOx_Pn_F7_DISABLE ||
-	        config->mode == GPIOx_Pn_F0_INPUT ||
-	        g_gpio_snapshots[port][pin].valid);
-}
-
-static const char *xf16cam_gpio_description(GPIO_Port port, unsigned int pin)
-{
-	if (port == GPIO_PORT_A) {
-		if (pin <= 7) return "Camera DVP data";
-		if (pin == 8) return "Camera pixel clock";
-		if (pin == 9) return "Camera master clock";
-		if (pin == 10) return "Camera HSYNC";
-		if (pin == 11) return "Camera VSYNC";
-		if (pin == 12 || pin == 13 || pin == 19) return "Unmapped GPIO candidate";
-		if (pin == 14) return "Camera sensor power-down/reset";
-		if (pin == 15) return "Board mode button";
-		if (pin == 16) return "Battery sense ADC6";
-		if (pin == 17) return "Camera sensor I2C SCL";
-		if (pin == 18) return "Camera sensor I2C SDA";
-		if (pin == 20) return "Board reset/AP button";
-		if (pin == 21) return "Board status LED";
-		if (pin == 22) return "IR LED on PTZ board variant";
-		if (pin == 23) return "Camera and SD power rail";
-	}
-	if (port == GPIO_PORT_B) {
-		if (pin == 0) return "UART console TX";
-		if (pin == 1) return "UART console RX";
-		if (pin >= 2 && pin <= 7) return "SPI flash / alternate PTZ mapping; locked";
-		if (pin >= 8 && pin <= 13) return "Unmapped GPIO candidate";
-		if (pin == 14 || pin == 15) return "Unmapped GPIO; possible PTZ candidate";
-		if (pin >= 16 && pin <= 18) return "SD card bus";
-		if (pin == 19) return "Setup/reset button on PTZ variant";
-		if (pin == 20) return "White illumination LED";
-		if (pin == 21) return "Unmapped GPIO candidate";
-	}
-	if (port == GPIO_PORT_C)
-		return "Unmapped GPIO candidate";
-	return "No confirmed function";
-}
-
-static void xf16cam_gpio_restore_pin(GPIO_Port port, GPIO_Pin pin)
-{
-	XF16CamGPIOSnapshot *snapshot = &g_gpio_snapshots[port][pin];
-
-	if (!snapshot->valid)
-		return;
-	HAL_GPIO_Init(port, pin, &snapshot->config);
-	if (snapshot->config.mode == GPIOx_Pn_F1_OUTPUT)
-		HAL_GPIO_WritePin(port, pin, snapshot->state);
-	snapshot->valid = 0;
-}
-
-static void xf16cam_gpio_restore_all(void)
-{
-	unsigned int port;
-	unsigned int pin;
-
-	for (port = 0; port < GPIO_PORT_NUM; ++port) {
-		for (pin = 0; pin < xf16cam_gpio_pin_count((GPIO_Port)port); ++pin)
-			xf16cam_gpio_restore_pin((GPIO_Port)port, (GPIO_Pin)pin);
-	}
-}
-
-static void xf16cam_http_gpio_json(int fd)
-{
-	char row[240];
-	unsigned int port;
-	unsigned int pin;
-	int first = 1;
-	int length;
-
-	xf16cam_http_begin(fd, "200 OK", "application/json");
-	xf16cam_http_send_text(fd, "{\"pins\":[");
-	for (port = 0; port < GPIO_PORT_NUM; ++port) {
-		for (pin = 0; pin < xf16cam_gpio_pin_count((GPIO_Port)port); ++pin) {
-			GPIO_InitParam config;
-			GPIO_PinState level = HAL_GPIO_ReadPin((GPIO_Port)port, (GPIO_Pin)pin);
-
-			HAL_GPIO_GetConfig((GPIO_Port)port, (GPIO_Pin)pin, &config);
-			length = snprintf(row, sizeof(row),
-			                  "%s{\"port\":\"%c\",\"pin\":%u,\"mode\":%u,\"level\":\"%s\","
-			                  "\"drive\":%u,\"pull\":%u,\"testable\":%s,\"description\":\"%s\"}",
-			                  first ? "" : ",", xf16cam_gpio_port_name((GPIO_Port)port), pin,
-			                  (unsigned int)config.mode, level == GPIO_PIN_HIGH ? "HIGH" : "LOW",
-			                  (unsigned int)config.driving, (unsigned int)config.pull,
-			                  xf16cam_gpio_available((GPIO_Port)port, (GPIO_Pin)pin, &config) ? "true" : "false",
-			                  xf16cam_gpio_description((GPIO_Port)port, pin));
-			if (length > 0 && (size_t)length < sizeof(row))
-				xf16cam_http_send_all(fd, row, (size_t)length);
-			first = 0;
-		}
-	}
-	xf16cam_http_send_text(fd, "]}");
-}
-
-static void xf16cam_http_gpio_control(int fd, const char *body)
-{
-	char port_text[8];
-	char pin_text[8];
-	char action[16];
-	char *end;
-	unsigned long pin_number;
-	GPIO_Port port;
-	GPIO_Pin pin;
-	XF16CamGPIOSnapshot *snapshot;
-	GPIO_InitParam output = {
-		.mode = GPIOx_Pn_F1_OUTPUT,
-		.driving = GPIO_DRIVING_LEVEL_0,
-		.pull = GPIO_PULL_NONE,
-	};
-
-	if (xf16cam_form_value(body, "action", action, sizeof(action)) != 0) {
-		xf16cam_http_message(fd, "400 Bad Request", "Missing GPIO action.");
-		return;
-	}
-	if (strcmp(action, "restore_all") == 0) {
-		xf16cam_gpio_restore_all();
-		xf16cam_http_message(fd, "200 OK", "All tested GPIO pins restored.");
-		return;
-	}
-	if (xf16cam_form_value(body, "port", port_text, sizeof(port_text)) != 0 ||
-	    xf16cam_form_value(body, "pin", pin_text, sizeof(pin_text)) != 0 ||
-	    pin_text[0] == '\0') {
-		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO address.");
-		return;
-	}
-	if (port_text[0] == 'A' || port_text[0] == 'a')
-		port = GPIO_PORT_A;
-	else if (port_text[0] == 'B' || port_text[0] == 'b')
-		port = GPIO_PORT_B;
-#if (__CONFIG_CHIP_ARCH_VER == 2)
-	else if (port_text[0] == 'C' || port_text[0] == 'c')
-		port = GPIO_PORT_C;
-#endif
-	else {
-		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO port.");
-		return;
-	}
-	pin_number = strtoul(pin_text, &end, 10);
-	if (end == pin_text || *end != '\0' ||
-	    pin_number >= xf16cam_gpio_pin_count(port)) {
-		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO pin.");
-		return;
-	}
-	pin = (GPIO_Pin)pin_number;
-	if (!xf16cam_gpio_testable(port, pin)) {
-		xf16cam_http_message(fd, "403 Forbidden", "This pin is reserved by the current board map and is locked.");
-		return;
-	}
-	if (strcmp(action, "restore") == 0) {
-		xf16cam_gpio_restore_pin(port, pin);
-		xf16cam_http_message(fd, "200 OK", "GPIO pin restored.");
-		return;
-	}
-	if (strcmp(action, "low") != 0 && strcmp(action, "high") != 0) {
-		xf16cam_http_message(fd, "400 Bad Request", "Invalid GPIO action.");
-		return;
-	}
-	snapshot = &g_gpio_snapshots[port][pin];
-	if (!snapshot->valid) {
-		HAL_GPIO_GetConfig(port, pin, &snapshot->config);
-		if (snapshot->config.mode != GPIOx_Pn_F7_DISABLE &&
-		    snapshot->config.mode != GPIOx_Pn_F0_INPUT) {
-			xf16cam_http_message(fd, "403 Forbidden", "This pin is currently assigned to an active peripheral and is locked.");
-			return;
-		}
-		snapshot->state = HAL_GPIO_ReadPin(port, pin);
-		snapshot->valid = 1;
-	}
-	HAL_GPIO_WritePin(port, pin, GPIO_PIN_LOW);
-	HAL_GPIO_Init(port, pin, &output);
-	HAL_GPIO_WritePin(port, pin, strcmp(action, "high") == 0 ? GPIO_PIN_HIGH : GPIO_PIN_LOW);
-	xf16cam_http_message(fd, "200 OK", "GPIO output applied. Use Restore when finished.");
-}
-
 __xip_text
 static int xf16cam_http_handle(int fd)
 {
@@ -1122,8 +870,6 @@ static int xf16cam_http_handle(int fd)
 
 	if (strcmp(method, "GET") == 0 && strcmp(path, "/") == 0) {
 		xf16cam_http_page(fd);
-	} else if (strcmp(method, "GET") == 0 && strcmp(path, "/api/gpio") == 0) {
-		xf16cam_http_gpio_json(fd);
 	} else if (strcmp(method, "GET") == 0 && strcmp(path, "/stream.mjpeg") == 0) {
 		if (!xf16cam_sensor_available())
 			xf16cam_http_message(fd, "503 Service Unavailable", "No supported camera sensor is available.");
@@ -1219,8 +965,6 @@ static int xf16cam_http_handle(int fd)
 		}
 		xf16cam_light_apply();
 		xf16cam_http_message(fd, "200 OK", "Light settings saved and applied. Return to the panel to view the current state.");
-	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/gpio") == 0) {
-		xf16cam_http_gpio_control(fd, body);
 	} else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/media") == 0) {
 		XF16CamMediaMode media_mode;
 
